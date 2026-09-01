@@ -73,6 +73,14 @@ async function makeExercise() {
       length: $("length").value
     });
 
+    // 新しい問題に切り替わったら、前の問題の音声キャッシュだけ破棄する。
+    if (audioUrl) {
+      URL.revokeObjectURL(audioUrl);
+      audioUrl = null;
+    }
+    audio.removeAttribute("src");
+    audio.load();
+
     statusEl.textContent = "準備できました。再生ボタンを押してください。";
     playBtn.disabled = false;
     answer.disabled = false;
@@ -90,24 +98,34 @@ async function playSpeech() {
   if (!current) return;
   try {
     playBtn.disabled = true;
-    statusEl.textContent = "音声を準備しています…";
+    statusEl.classList.remove("error");
 
-    const r = await fetch("/api/speech", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: current.sentence, speed })
-    });
+    // この問題の音声がまだ無いときだけOpenAI APIで生成する。
+    // 2回目以降の再生はブラウザ内に保持した同じ音声を再利用する。
+    if (!audioUrl) {
+      statusEl.textContent = "音声を準備しています…";
 
-    if (!r.ok) {
-      let msg = "音声生成に失敗しました。";
-      try { msg = (await r.json()).error || msg; } catch {}
-      throw new Error(msg);
+      const r = await fetch("/api/speech", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // 音声自体は1.0倍で一度だけ生成し、速度変更はブラウザ側で行う。
+        body: JSON.stringify({ text: current.sentence, speed: 1 })
+      });
+
+      if (!r.ok) {
+        let msg = "音声生成に失敗しました。";
+        try { msg = (await r.json()).error || msg; } catch {}
+        throw new Error(msg);
+      }
+
+      const blob = await r.blob();
+      audioUrl = URL.createObjectURL(blob);
+      audio.src = audioUrl;
     }
 
-    const blob = await r.blob();
-    if (audioUrl) URL.revokeObjectURL(audioUrl);
-    audioUrl = URL.createObjectURL(blob);
-    audio.src = audioUrl;
+    // 速度変更ではAPIを呼ばず、同じ音声の再生速度だけ変更する。
+    audio.playbackRate = speed;
+    audio.currentTime = 0;
     await audio.play();
     statusEl.textContent = "再生中…";
     audio.onended = () => statusEl.textContent = "聞こえた英文を入力してください。";
