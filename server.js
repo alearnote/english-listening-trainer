@@ -40,11 +40,63 @@ function safeJsonParse(text) {
 
 app.post("/api/exercise", requireKey, async (req, res) => {
   try {
+    const mode = String(req.body.mode || "dictation");
     const level = String(req.body.level || "B1");
     const topic = String(req.body.topic || "Daily conversation");
     const length = String(req.body.length || "short");
 
-    const prompt = `
+    const lengthRule =
+      length === "short" ? "about 8-14 English words" :
+      length === "medium" ? "about 15-25 English words" :
+      "about 26-40 English words";
+
+    const prompt = mode === "mcq" ? `
+Create ONE English listening comprehension exercise for a Japanese learner.
+
+CEFR level: ${level}
+Topic: ${topic}
+Length: ${length}
+
+Return ONLY valid JSON in this exact shape:
+{
+  "sentence": "natural spoken English passage",
+  "translation": "natural Japanese translation",
+  "listening_tip": "short Japanese explanation of a likely listening difficulty",
+  "questions": [
+    {
+      "question": "English comprehension question",
+      "options": ["English option A", "English option B", "English option C", "English option D"],
+      "answer_index": 0,
+      "explanation_ja": "short Japanese explanation of why the correct answer is correct"
+    },
+    {
+      "question": "English comprehension question",
+      "options": ["English option A", "English option B", "English option C", "English option D"],
+      "answer_index": 1,
+      "explanation_ja": "short Japanese explanation"
+    },
+    {
+      "question": "English comprehension question",
+      "options": ["English option A", "English option B", "English option C", "English option D"],
+      "answer_index": 2,
+      "explanation_ja": "short Japanese explanation"
+    }
+  ]
+}
+
+Rules:
+- Do not include markdown.
+- The listening passage must be natural spoken English appropriate for CEFR ${level}.
+- Passage length: ${lengthRule}.
+- Make EXACTLY 3 questions and EXACTLY 4 options for each question.
+- All questions and options must be in English.
+- Make only one option correct for each question.
+- Use a mix of: factual detail, speaker intention/main idea, and reasonable inference when appropriate for the level.
+- Every question must be answerable from the passage alone.
+- Avoid obscure proper nouns and trick questions.
+- answer_index must be an integer from 0 to 3.
+- Vary the position of the correct answer across the three questions.
+`.trim() : `
 Create ONE English listening dictation exercise for a Japanese learner.
 
 CEFR level: ${level}
@@ -63,9 +115,7 @@ Rules:
 - Do not include markdown.
 - Keep the English natural, useful, and appropriate for CEFR ${level}.
 - Avoid obscure proper nouns.
-- For short: about 8-14 English words.
-- For medium: about 15-25 English words.
-- For long: about 26-40 English words.
+- Passage length: ${lengthRule}.
 `.trim();
 
     const response = await fetch("https://api.openai.com/v1/responses", {
@@ -88,6 +138,19 @@ Rules:
 
     const text = extractOutputText(data);
     const exercise = safeJsonParse(text);
+
+    if (mode === "mcq") {
+      if (!Array.isArray(exercise.questions) || exercise.questions.length !== 3) {
+        throw new Error("4択問題の生成形式が不正でした。もう一度お試しください。");
+      }
+      for (const q of exercise.questions) {
+        if (!Array.isArray(q.options) || q.options.length !== 4) {
+          throw new Error("選択肢の生成形式が不正でした。もう一度お試しください。");
+        }
+        q.answer_index = Math.max(0, Math.min(3, Number(q.answer_index) || 0));
+      }
+    }
+
     res.json(exercise);
   } catch (err) {
     res.status(500).json({ error: err.message || "問題の作成に失敗しました。" });
