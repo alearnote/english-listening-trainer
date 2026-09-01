@@ -80,3 +80,17 @@ summary{cursor:pointer;font-weight:750}
   header{align-items:flex-start;flex-direction:column}
   h1{font-size:28px}
 }
+
+.mcq-note{margin:-4px 0 16px;color:var(--muted);font-size:14px}
+.question-card{border:1px solid var(--line);border-radius:14px;padding:16px;margin:12px 0;background:#fbfcfc}
+.question-title{font-weight:800;line-height:1.55;margin-bottom:10px}
+.option-list{display:grid;gap:8px}
+.option{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:11px 12px;background:#fff;color:var(--text);font-size:15px;cursor:pointer}
+.option:hover{border-color:#aad7ca;background:var(--soft)}
+.option input{margin-top:3px;accent-color:var(--accent)}
+.review-card{border-radius:12px;padding:14px;margin:12px 0;border:1px solid var(--line);background:#f7f8fa}
+.review-card p{margin:7px 0;line-height:1.55}
+.review-correct{background:var(--soft)}
+.review-wrong{background:#fff6f6}
+.explanation-ja{color:var(--muted)}
+@media(max-width:720px){.controls{grid-template-columns:1fr 1fr}.controls .primary{grid-column:1/-1}}
