@@ -12,12 +12,18 @@
       <div>
         <p class="eyebrow">AI LISTENING PRACTICE</p>
         <h1>English Listening Trainer</h1>
-        <p class="sub">聞く → 書く → 採点 → 聞き直す</p>
+        <p class="sub">聞く → 答える → 採点 → 聞き直す</p>
       </div>
       <div class="streak">🎧 <span id="count">0</span> questions</div>
     </header>
 
     <section class="panel controls">
+      <label>Mode
+        <select id="mode">
+          <option value="dictation">書き取り</option>
+          <option value="mcq">内容理解 4択×3問</option>
+        </select>
+      </label>
       <label>Level
         <select id="level">
           <option>A1</option><option>A2</option><option selected>B1</option>
@@ -63,7 +69,7 @@
       </div>
     </section>
 
-    <section class="panel">
+    <section id="dictationPanel" class="panel">
       <div class="section-title">
         <span>2</span><h2>What did you hear?</h2>
       </div>
@@ -71,21 +77,35 @@
       <button id="checkBtn" class="primary wide" disabled>採点する</button>
     </section>
 
+    <section id="mcqPanel" class="panel hidden">
+      <div class="section-title">
+        <span>2</span><h2>Choose the best answer</h2>
+      </div>
+      <p class="mcq-note">音声の内容について、英語の4択問題3問に答えてください。</p>
+      <div id="questions"></div>
+      <button id="mcqCheckBtn" class="primary wide" disabled>3問を採点する</button>
+    </section>
+
     <section id="result" class="panel result hidden">
       <div class="score-wrap">
         <div class="score" id="score">0%</div>
         <div>
-          <strong>Dictation score</strong>
+          <strong id="scoreLabel">Dictation score</strong>
           <p id="scoreMsg"></p>
         </div>
       </div>
 
-      <div class="answer-box">
-        <div class="label">YOUR ANSWER</div>
-        <div id="yourAnswer"></div>
+      <div id="dictationResult">
+        <div class="answer-box">
+          <div class="label">YOUR ANSWER</div>
+          <div id="yourAnswer"></div>
+        </div>
       </div>
+
+      <div id="mcqResult" class="hidden"></div>
+
       <div class="answer-box correct">
-        <div class="label">CORRECT</div>
+        <div class="label">TRANSCRIPT</div>
         <div id="correctAnswer"></div>
       </div>
 
@@ -94,7 +114,7 @@
         <p id="translation"></p>
       </details>
 
-      <div class="coach">
+      <div id="coachBox" class="coach">
         <div class="label">AI COACH</div>
         <p id="feedback">解説を生成しています…</p>
         <ul id="focus"></ul>
