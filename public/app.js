@@ -14,6 +14,170 @@ let reading = null;
 
 const STORAGE_KEY = "englishTrainerV2Progress";
 
+/*
+  Vocabularyで最近出題した単語を保存するためのキー
+*/
+const VOCAB_HISTORY_KEY =
+  "englishTrainerV2VocabHistory";
+
+/*
+  直近何語まで重複回避に使うか
+*/
+const VOCAB_HISTORY_LIMIT = 200;
+
+
+/* ================================
+   Vocabulary History
+================================ */
+
+/*
+  最近出題した単語履歴を読み込む
+*/
+function loadVocabHistory() {
+  try {
+    const data =
+      JSON.parse(
+        localStorage.getItem(
+          VOCAB_HISTORY_KEY
+        ) || "[]"
+      );
+
+    if (!Array.isArray(data)) {
+      return [];
+    }
+
+    return data
+      .filter(Boolean)
+      .slice(
+        -VOCAB_HISTORY_LIMIT
+      );
+
+  } catch {
+    return [];
+  }
+}
+
+
+/*
+  Vocabulary履歴を保存
+*/
+function saveVocabHistory(words) {
+  const unique = [];
+  const seen = new Set();
+
+  for (const raw of words) {
+    const word =
+      String(raw || "")
+        .trim();
+
+    if (!word) continue;
+
+    const key =
+      word.toLowerCase();
+
+    if (
+      seen.has(key)
+    ) {
+      continue;
+    }
+
+    seen.add(key);
+
+    unique.push(word);
+  }
+
+  /*
+    最新200語のみ保存
+  */
+  localStorage.setItem(
+    VOCAB_HISTORY_KEY,
+    JSON.stringify(
+      unique.slice(
+        -VOCAB_HISTORY_LIMIT
+      )
+    )
+  );
+}
+
+
+/*
+  今回出題した単語を
+  既存履歴へ追加
+*/
+function rememberVocabWords(
+  words
+) {
+  const current =
+    loadVocabHistory();
+
+  const merged = [
+    ...current,
+    ...words
+  ];
+
+  /*
+    大文字小文字を無視して
+    重複を削除
+  */
+  const byLower =
+    new Map();
+
+  for (
+    const raw of merged
+  ) {
+    const word =
+      String(raw || "")
+        .trim();
+
+    if (!word) continue;
+
+    byLower.set(
+      word.toLowerCase(),
+      word
+    );
+  }
+
+  saveVocabHistory(
+    Array.from(
+      byLower.values()
+    )
+  );
+}
+
+
+/*
+  Progressに記録されている
+  苦手単語を取得
+*/
+function getWeakWordsForReview(
+  limit = 40
+) {
+  return Object.values(
+    progress.weakWords || {}
+  )
+    .sort(
+      (a, b) =>
+        (b.count || 0) -
+        (a.count || 0)
+    )
+    .slice(0, limit)
+    .map(
+      w => ({
+        word:
+          w.word,
+
+        meaning_ja:
+          w.meaning ||
+          "",
+
+        count:
+          w.count ||
+          1
+      })
+    );
+}
+
+
 /* ================================
    Progress
 ================================ */
@@ -28,48 +192,79 @@ function todayKey() {
   ).padStart(2, "0")}`;
 }
 
+
 function blankProgress() {
   return {
-    date: todayKey(),
-    listening: 0,
-    vocabulary: 0,
-    reading: 0,
-    correct: 0,
-    total: 0,
-    weakWords: {}
+    date:
+      todayKey(),
+
+    listening:
+      0,
+
+    vocabulary:
+      0,
+
+    reading:
+      0,
+
+    correct:
+      0,
+
+    total:
+      0,
+
+    weakWords:
+      {}
   };
 }
 
+
 function loadProgress() {
   try {
-    const p = JSON.parse(
-      localStorage.getItem(STORAGE_KEY) || "null"
-    );
+    const p =
+      JSON.parse(
+        localStorage.getItem(
+          STORAGE_KEY
+        ) || "null"
+      );
 
-    if (!p || p.date !== todayKey()) {
+    if (
+      !p ||
+      p.date !== todayKey()
+    ) {
       return blankProgress();
     }
 
     return {
       ...blankProgress(),
       ...p,
-      weakWords: p.weakWords || {}
+
+      weakWords:
+        p.weakWords ||
+        {}
     };
+
   } catch {
     return blankProgress();
   }
 }
 
-let progress = loadProgress();
+
+let progress =
+  loadProgress();
+
 
 function saveProgress() {
   localStorage.setItem(
     STORAGE_KEY,
-    JSON.stringify(progress)
+    JSON.stringify(
+      progress
+    )
   );
 
   renderProgress();
 }
+
 
 function addProgress(
   kind,
@@ -79,11 +274,15 @@ function addProgress(
   progress[kind] =
     (progress[kind] || 0) + 1;
 
-  progress.correct += correct;
-  progress.total += total;
+  progress.correct +=
+    correct;
+
+  progress.total +=
+    total;
 
   saveProgress();
 }
+
 
 function addWeakWord(
   word,
@@ -91,10 +290,12 @@ function addWeakWord(
 ) {
   if (!word) return;
 
-  const key = word.toLowerCase();
+  const key =
+    word.toLowerCase();
 
   const old =
-    progress.weakWords[key] || {
+    progress.weakWords[key] ||
+    {
       word,
       meaning,
       count: 0
@@ -103,30 +304,38 @@ function addWeakWord(
   old.count += 1;
 
   if (meaning) {
-    old.meaning = meaning;
+    old.meaning =
+      meaning;
   }
 
-  progress.weakWords[key] = old;
+  progress.weakWords[key] =
+    old;
 
   saveProgress();
 }
 
+
 function renderProgress() {
-  $("statListening").textContent =
+  $("statListening")
+    .textContent =
     progress.listening;
 
-  $("statVocabulary").textContent =
+  $("statVocabulary")
+    .textContent =
     progress.vocabulary;
 
-  $("statReading").textContent =
+  $("statReading")
+    .textContent =
     progress.reading;
 
-  $("todayTotal").textContent =
+  $("todayTotal")
+    .textContent =
     progress.listening +
     progress.vocabulary +
     progress.reading;
 
-  $("statAccuracy").textContent =
+  $("statAccuracy")
+    .textContent =
     progress.total
       ? `${Math.round(
           progress.correct /
@@ -141,17 +350,22 @@ function renderProgress() {
     )
       .sort(
         (a, b) =>
-          b.count - a.count
+          b.count -
+          a.count
       )
       .slice(0, 30);
 
-  $("weakWords").innerHTML =
+  $("weakWords")
+    .innerHTML =
     words.length
       ? words
           .map(
             w =>
               `<span class="weak-word">
-                ${escapeHtml(w.word)}
+                ${escapeHtml(
+                  w.word
+                )}
+
                 ${
                   w.meaning
                     ? ` — ${escapeHtml(
@@ -159,6 +373,7 @@ function renderProgress() {
                       )}`
                     : ""
                 }
+
                 ×${w.count}
               </span>`
           )
@@ -168,35 +383,56 @@ function renderProgress() {
         </span>`;
 }
 
+
 /* ================================
    Common
 ================================ */
 
 function escapeHtml(s) {
-  return String(s ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
+  return String(
+    s ?? ""
+  )
+    .replaceAll(
+      "&",
+      "&amp;"
+    )
+    .replaceAll(
+      "<",
+      "&lt;"
+    )
+    .replaceAll(
+      ">",
+      "&gt;"
+    )
+    .replaceAll(
+      '"',
+      "&quot;"
+    );
 }
+
 
 async function postJson(
   url,
   body
 ) {
-  const r = await fetch(
-    url,
-    {
-      method: "POST",
+  const r =
+    await fetch(
+      url,
+      {
+        method:
+          "POST",
 
-      headers: {
-        "Content-Type":
-          "application/json"
-      },
+        headers: {
+          "Content-Type":
+            "application/json"
+        },
 
-      body: JSON.stringify(body)
-    }
-  );
+        body:
+          JSON.stringify(
+            body
+          )
+      }
+    );
 
   const data =
     await r.json();
@@ -211,27 +447,37 @@ async function postJson(
   return data;
 }
 
+
 function normalize(s) {
   return String(s)
     .toLowerCase()
-    .replace(/[’']/g, "'")
+    .replace(
+      /[’']/g,
+      "'"
+    )
     .replace(
       /[^\p{L}\p{N}' ]/gu,
       " "
     )
-    .replace(/\s+/g, " ")
+    .replace(
+      /\s+/g,
+      " "
+    )
     .trim();
 }
+
 
 function wordLevenshtein(
   a,
   b
 ) {
   const A =
-    normalize(a).split(" ");
+    normalize(a)
+      .split(" ");
 
   const B =
-    normalize(b).split(" ");
+    normalize(b)
+      .split(" ");
 
   const dp =
     Array.from(
@@ -281,7 +527,8 @@ function wordLevenshtein(
         Math.min(
           dp[i - 1][j] + 1,
           dp[i][j - 1] + 1,
-          dp[i - 1][j - 1] + c
+          dp[i - 1][j - 1] +
+          c
         );
     }
   }
@@ -299,6 +546,7 @@ function wordLevenshtein(
   };
 }
 
+
 function dictationScore(
   correct,
   user
@@ -312,35 +560,43 @@ function dictationScore(
   return Math.max(
     0,
     Math.round(
-      (1 -
+      (
+        1 -
         x.dist /
-          x.max) *
-        100
+        x.max
+      ) * 100
     )
   );
 }
 
+
 function commonSettings() {
   return {
     level:
-      $("level").value,
+      $("level")
+        .value,
 
     topic:
-      $("topic").value
+      $("topic")
+        .value
   };
 }
+
 
 /* ================================
    Tabs
 ================================ */
 
 document
-  .querySelectorAll(".tab")
+  .querySelectorAll(
+    ".tab"
+  )
   .forEach(
     btn =>
       btn.addEventListener(
         "click",
         () => {
+
           document
             .querySelectorAll(
               ".tab"
@@ -369,9 +625,10 @@ document
 
           $(
             `tab-${btn.dataset.tab}`
-          ).classList.remove(
-            "hidden"
-          );
+          )
+            .classList.remove(
+              "hidden"
+            );
 
           if (
             btn.dataset.tab ===
@@ -382,6 +639,7 @@ document
         }
       )
   );
+
 
 /* ================================
    LISTENING
@@ -404,11 +662,14 @@ function clearListeningAudio() {
       "src"
     );
 
-  $("audio").load();
+  $("audio")
+    .load();
 }
 
+
 function resetListeningMode() {
-  listening = null;
+  listening =
+    null;
 
   listeningMcqRevealed =
     false;
@@ -420,16 +681,20 @@ function resetListeningMode() {
       "hidden"
     );
 
-  $("dictationAnswer").value =
+  $("dictationAnswer")
+    .value =
     "";
 
-  $("dictationAnswer").disabled =
+  $("dictationAnswer")
+    .disabled =
     true;
 
-  $("dictationCheckBtn").disabled =
+  $("dictationCheckBtn")
+    .disabled =
     true;
 
-  $("playBtn").disabled =
+  $("playBtn")
+    .disabled =
     true;
 
   $("listeningMcqPanel")
@@ -438,10 +703,12 @@ function resetListeningMode() {
     );
 
   $("listeningQuestions")
-    .innerHTML = "";
+    .innerHTML =
+    "";
 
   $("listeningMcqCheckBtn")
-    .disabled = true;
+    .disabled =
+    true;
 
   $("dictationPanel")
     .classList.toggle(
@@ -453,8 +720,9 @@ function resetListeningMode() {
 
   $("listeningStatus")
     .textContent =
-      "「新しい問題」を押してください";
+    "「新しい問題」を押してください";
 }
+
 
 $("listeningMode")
   .addEventListener(
@@ -462,10 +730,12 @@ $("listeningMode")
     resetListeningMode
   );
 
+
 $("newListeningBtn")
   .addEventListener(
     "click",
     async () => {
+
       const btn =
         $("newListeningBtn");
 
@@ -482,7 +752,7 @@ $("newListeningBtn")
 
         $("listeningStatus")
           .textContent =
-            "AIが問題を作成しています…";
+          "AIが問題を作成しています…";
 
         listening =
           await postJson(
@@ -521,6 +791,7 @@ $("newListeningBtn")
           $("listeningStatus")
             .textContent =
             "準備できました。音声を再生してください。";
+
         } else {
           $("listeningMcqPanel")
             .classList.add(
@@ -532,10 +803,12 @@ $("newListeningBtn")
             "準備できました。まず音声を最後まで聞いてください。";
         }
 
-        $("playBtn").disabled =
+        $("playBtn")
+          .disabled =
           false;
 
       } catch (e) {
+
         $("listeningStatus")
           .textContent =
           e.message;
@@ -552,8 +825,11 @@ $("newListeningBtn")
     }
   );
 
+
 async function playListening() {
-  if (!listening) return;
+  if (!listening) {
+    return;
+  }
 
   const play =
     $("playBtn");
@@ -570,6 +846,10 @@ async function playListening() {
         "error"
       );
 
+    /*
+      同じ問題では
+      音声APIを最初の1回だけ使用
+    */
     if (
       !listeningAudioUrl
     ) {
@@ -581,7 +861,8 @@ async function playListening() {
         await fetch(
           "/api/speech",
           {
-            method: "POST",
+            method:
+              "POST",
 
             headers: {
               "Content-Type":
@@ -608,6 +889,7 @@ async function playListening() {
               await r.json()
             ).error ||
             msg;
+
         } catch {}
 
         throw new Error(
@@ -632,11 +914,13 @@ async function playListening() {
 
     audio.onended =
       () => {
+
         if (
           $("listeningMode")
             .value ===
           "mcq"
         ) {
+
           if (
             !listeningMcqRevealed
           ) {
@@ -665,6 +949,7 @@ async function playListening() {
             "内容について3問に答えてください。";
 
         } else {
+
           $("listeningStatus")
             .textContent =
             "聞こえた英文を入力してください。";
@@ -678,6 +963,7 @@ async function playListening() {
       "再生中…";
 
   } catch (e) {
+
     $("listeningStatus")
       .textContent =
       e.message;
@@ -688,10 +974,12 @@ async function playListening() {
       );
 
   } finally {
+
     play.disabled =
       false;
   }
 }
+
 
 $("playBtn")
   .addEventListener(
@@ -699,11 +987,13 @@ $("playBtn")
     playListening
   );
 
+
 $("replayBtn")
   .addEventListener(
     "click",
     playListening
   );
+
 
 document
   .querySelectorAll(
@@ -714,6 +1004,7 @@ document
       btn.addEventListener(
         "click",
         () => {
+
           document
             .querySelectorAll(
               ".speed"
@@ -736,6 +1027,7 @@ document
         }
       )
   );
+
 
 function renderListeningQuestions() {
   $("listeningQuestions")
@@ -763,6 +1055,7 @@ function renderListeningQuestions() {
         x.addEventListener(
           "change",
           () => {
+
             $("listeningMcqCheckBtn")
               .disabled =
               !(
@@ -778,6 +1071,7 @@ function renderListeningQuestions() {
         )
     );
 }
+
 
 function questionHtml(
   q,
@@ -828,10 +1122,12 @@ function questionHtml(
   `;
 }
 
+
 $("dictationCheckBtn")
   .addEventListener(
     "click",
     async () => {
+
       if (
         !listening ||
         !$(
@@ -843,7 +1139,8 @@ $("dictationCheckBtn")
 
       const user =
         $("dictationAnswer")
-          .value.trim();
+          .value
+          .trim();
 
       const score =
         dictationScore(
@@ -895,7 +1192,8 @@ $("dictationCheckBtn")
         "AIが解説を生成しています…";
 
       $("listeningFocus")
-        .innerHTML = "";
+        .innerHTML =
+        "";
 
       addProgress(
         "listening",
@@ -910,6 +1208,7 @@ $("dictationCheckBtn")
         true;
 
       try {
+
         const ex =
           await postJson(
             "/api/explain",
@@ -935,12 +1234,15 @@ $("dictationCheckBtn")
             .map(
               x =>
                 `<li>
-                  ${escapeHtml(x)}
+                  ${escapeHtml(
+                    x
+                  )}
                 </li>`
             )
             .join("");
 
       } catch {
+
         $("listeningFeedback")
           .textContent =
           "AI解説の取得に失敗しました。";
@@ -948,10 +1250,12 @@ $("dictationCheckBtn")
     }
   );
 
+
 $("listeningMcqCheckBtn")
   .addEventListener(
     "click",
     () => {
+
       let c = 0;
 
       const html =
@@ -961,11 +1265,19 @@ $("listeningMcqCheckBtn")
         )
           .map(
             (q, i) => {
+
+              const selected =
+                document.querySelector(
+                  `input[name="lq${i}"]:checked`
+                );
+
+              if (!selected) {
+                return "";
+              }
+
               const s =
                 Number(
-                  document.querySelector(
-                    `input[name="lq${i}"]:checked`
-                  ).value
+                  selected.value
                 );
 
               const a =
@@ -973,7 +1285,9 @@ $("listeningMcqCheckBtn")
                   q.answer_index
                 );
 
-              if (s === a) {
+              if (
+                s === a
+              ) {
                 c++;
               }
 
@@ -1035,9 +1349,15 @@ $("listeningMcqCheckBtn")
           )
           .join("");
 
+      const total =
+        (
+          listening.questions ||
+          []
+        ).length;
+
       $("listeningScore")
         .textContent =
-        `${c}/3`;
+        `${c}/${total}`;
 
       $("listeningScoreLabel")
         .textContent =
@@ -1045,9 +1365,12 @@ $("listeningMcqCheckBtn")
 
       $("listeningScoreMsg")
         .textContent =
-        c === 3
+        c === total
           ? "Excellent!"
-          : c === 2
+          : c >=
+            Math.ceil(
+              total * 0.67
+            )
           ? "Good! もう一度聞くとさらに定着します。"
           : "スクリプトを確認して聞き直しましょう。";
 
@@ -1075,7 +1398,7 @@ $("listeningMcqCheckBtn")
       addProgress(
         "listening",
         c,
-        3
+        total
       );
 
       $("listeningMcqCheckBtn")
@@ -1093,6 +1416,7 @@ $("listeningMcqCheckBtn")
         );
     }
   );
+
 
 function showListeningBase() {
   $("listeningTranscript")
@@ -1123,6 +1447,7 @@ function showListeningBase() {
     });
 }
 
+
 $("nextListeningBtn")
   .addEventListener(
     "click",
@@ -1130,6 +1455,7 @@ $("nextListeningBtn")
       $("newListeningBtn")
         .click()
   );
+
 
 /* ================================
    VOCABULARY
@@ -1139,6 +1465,7 @@ $("vocabCount")
   .addEventListener(
     "change",
     () => {
+
       $("newVocabBtn")
         .textContent =
         `＋ ${
@@ -1148,17 +1475,20 @@ $("vocabCount")
     }
   );
 
+
 $("newVocabBtn")
   .addEventListener(
     "click",
     generateVocab
   );
 
+
 $("vocabAgainBtn")
   .addEventListener(
     "click",
     generateVocab
   );
+
 
 async function generateVocab() {
   const btn =
@@ -1194,6 +1524,12 @@ async function generateVocab() {
         "hidden"
       );
 
+    /*
+      ここで
+      ・直近200語
+      ・苦手単語
+      をserver.jsへ送る
+    */
     const data =
       await postJson(
         "/api/vocabulary",
@@ -1208,17 +1544,19 @@ async function generateVocab() {
             Number(
               $("vocabCount")
                 .value
-            )
+            ),
+
+          recentWords:
+            loadVocabHistory(),
+
+          weakWords:
+            getWeakWordsForReview()
         }
       );
 
     vocabSet =
       data.questions ||
       [];
-
-    vocabIndex = 0;
-    vocabCorrect = 0;
-    vocabMistakes = [];
 
     if (
       !vocabSet.length
@@ -1227,6 +1565,25 @@ async function generateVocab() {
         "問題を生成できませんでした。"
       );
     }
+
+    /*
+      今回出題された単語を
+      履歴に記録する
+    */
+    rememberVocabWords(
+      vocabSet.map(
+        q => q.word
+      )
+    );
+
+    vocabIndex =
+      0;
+
+    vocabCorrect =
+      0;
+
+    vocabMistakes =
+      [];
 
     $("vocabStart")
       .classList.add(
@@ -1242,11 +1599,15 @@ async function generateVocab() {
 
     $("vocabQuiz")
       .scrollIntoView({
-        behavior: "smooth",
-        block: "start"
+        behavior:
+          "smooth",
+
+        block:
+          "start"
       });
 
   } catch (e) {
+
     $("vocabStart")
       .classList.remove(
         "hidden"
@@ -1270,10 +1631,12 @@ async function generateVocab() {
       `;
 
   } finally {
+
     btn.disabled =
       false;
   }
 }
+
 
 function renderVocabQuestion() {
   const q =
@@ -1332,6 +1695,7 @@ function renderVocabQuestion() {
             class="option vocab-choice"
             data-index="${i}"
           >
+
             <span>
               <strong>
                 ${String.fromCharCode(
@@ -1339,8 +1703,11 @@ function renderVocabQuestion() {
                 )}.
               </strong>
 
-              ${escapeHtml(o)}
+              ${escapeHtml(
+                o
+              )}
             </span>
+
           </button>
         `
       )
@@ -1364,10 +1731,10 @@ function renderVocabQuestion() {
     );
 }
 
+
 /*
   Vocabulary回答
 */
-
 function answerVocab(
   selected
 ) {
@@ -1384,36 +1751,42 @@ function answerVocab(
     correct;
 
   if (good) {
+
     vocabCorrect++;
+
   } else {
+
     vocabMistakes.push(
       q
     );
 
+    /*
+      間違えた単語は
+      苦手単語として記録
+    */
     addWeakWord(
       q.word,
       q.meaning_ja
     );
   }
 
-  /*
-    一度回答したら
-    選択肢を押せないようにする
-  */
 
+  /*
+    回答後は選択肢を無効化
+  */
   document
     .querySelectorAll(
       ".vocab-choice"
     )
     .forEach(
       (b, i) => {
+
         b.disabled =
           true;
 
         /*
-          正解の選択肢
+          正解
         */
-
         if (
           i === correct
         ) {
@@ -1423,9 +1796,8 @@ function answerVocab(
         }
 
         /*
-          間違えて選んだ選択肢
+          自分が選んだ不正解
         */
-
         if (
           i === selected &&
           !good
@@ -1437,10 +1809,10 @@ function answerVocab(
       }
     );
 
-  /*
-    正誤と解説を表示
-  */
 
+  /*
+    正誤・解説表示
+  */
   const box =
     $("vocabFeedback");
 
@@ -1463,7 +1835,8 @@ function answerVocab(
     <p>
       <b>
         ${escapeHtml(
-          q.word || ""
+          q.word ||
+          ""
         )}
       </b>
 
@@ -1488,24 +1861,24 @@ function answerVocab(
     "hidden"
   );
 
-  /*
-    「次の問題」ボタンを表示
-  */
 
+  /*
+    次の問題ボタンを表示
+  */
   $("vocabNextBtn")
     .classList.remove(
       "hidden"
     );
 
-  /*
-    回答直後に
-    「次の問題」ボタンが
-    画面下部付近に来るよう
-    自動スクロールする
-  */
 
+  /*
+    次の問題ボタンが
+    スマホ画面の下側に
+    見える位置まで移動
+  */
   setTimeout(
     () => {
+
       $("vocabNextBtn")
         .scrollIntoView({
           behavior:
@@ -1514,38 +1887,36 @@ function answerVocab(
           block:
             "end"
         });
+
     },
     100
   );
 }
 
-/*
-  「次の問題」ボタン
-*/
 
+/*
+  「次の問題」
+*/
 $("vocabNextBtn")
   .addEventListener(
     "click",
     () => {
+
       vocabIndex++;
 
       if (
         vocabIndex <
         vocabSet.length
       ) {
-        /*
-          次の問題を表示
-        */
 
         renderVocabQuestion();
 
         /*
-          次問の先頭まで
-          自動スクロール
+          次問の先頭へ移動
         */
-
         setTimeout(
           () => {
+
             $("vocabQuiz")
               .scrollIntoView({
                 behavior:
@@ -1554,19 +1925,21 @@ $("vocabNextBtn")
                 block:
                   "start"
               });
+
           },
           50
         );
 
       } else {
+
         /*
           全問終了
         */
-
         finishVocab();
 
         setTimeout(
           () => {
+
             $("vocabSummary")
               .scrollIntoView({
                 behavior:
@@ -1575,12 +1948,14 @@ $("vocabNextBtn")
                 block:
                   "start"
               });
+
           },
           50
         );
       }
     }
   );
+
 
 function finishVocab() {
   $("vocabQuiz")
@@ -1655,11 +2030,12 @@ function finishVocab() {
         </div>
       `;
 
+
   /*
     Vocabularyは
-    セット数ではなく問題数を記録
+    「セット数」ではなく
+    問題数を記録
   */
-
   progress.vocabulary +=
     vocabSet.length;
 
@@ -1672,6 +2048,7 @@ function finishVocab() {
   saveProgress();
 }
 
+
 /* ================================
    READING
 ================================ */
@@ -1682,17 +2059,20 @@ $("newReadingBtn")
     generateReading
   );
 
+
 $("nextReadingBtn")
   .addEventListener(
     "click",
     generateReading
   );
 
+
 async function generateReading() {
   const btn =
     $("newReadingBtn");
 
   try {
+
     btn.disabled =
       true;
 
@@ -1769,6 +2149,7 @@ async function generateReading() {
           x.addEventListener(
             "change",
             () => {
+
               $("readingCheckBtn")
                 .disabled =
                 !(
@@ -1799,6 +2180,7 @@ async function generateReading() {
       );
 
   } catch (e) {
+
     $("readingStart")
       .classList.remove(
         "hidden"
@@ -1822,29 +2204,41 @@ async function generateReading() {
       `;
 
   } finally {
+
     btn.disabled =
       false;
   }
 }
 
+
 $("readingCheckBtn")
   .addEventListener(
     "click",
     () => {
+
       let c = 0;
 
+      const questions =
+        reading.questions ||
+        [];
+
       const review =
-        (
-          reading.questions ||
-          []
-        )
+        questions
           .map(
             (q, i) => {
+
+              const selected =
+                document.querySelector(
+                  `input[name="rq${i}"]:checked`
+                );
+
+              if (!selected) {
+                return "";
+              }
+
               const s =
                 Number(
-                  document.querySelector(
-                    `input[name="rq${i}"]:checked`
-                  ).value
+                  selected.value
                 );
 
               const a =
@@ -1852,7 +2246,9 @@ $("readingCheckBtn")
                   q.answer_index
                 );
 
-              if (s === a) {
+              if (
+                s === a
+              ) {
                 c++;
               }
 
@@ -1916,16 +2312,15 @@ $("readingCheckBtn")
 
       $("readingScore")
         .textContent =
-        `${c}/${reading.questions.length}`;
+        `${c}/${questions.length}`;
 
       $("readingScoreMsg")
         .textContent =
         c ===
-        reading.questions.length
+        questions.length
           ? "Excellent!"
           : c /
-              reading.questions
-                .length >=
+              questions.length >=
             0.7
           ? "よく読めています。"
           : "解説と日本語訳を確認して読み直しましょう。";
@@ -1994,11 +2389,11 @@ $("readingCheckBtn")
       addProgress(
         "reading",
         c,
-        reading.questions
-          .length
+        questions.length
       );
     }
   );
+
 
 /* ================================
    Reset progress
@@ -2008,11 +2403,13 @@ $("clearProgressBtn")
   .addEventListener(
     "click",
     () => {
+
       if (
         confirm(
           "今日の学習履歴と苦手単語をリセットしますか？"
         )
       ) {
+
         progress =
           blankProgress();
 
@@ -2020,6 +2417,7 @@ $("clearProgressBtn")
       }
     }
   );
+
 
 /* ================================
    Initial setup
