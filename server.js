@@ -214,12 +214,9 @@ function validateQuestions(
 
 
 /* ================================
-   Language detection
+   Language helpers
 ================================ */
 
-/*
-  日本語を含むか
-*/
 function hasJapanese(
   text
 ) {
@@ -233,9 +230,6 @@ function hasJapanese(
 }
 
 
-/*
-  英字を含むか
-*/
 function hasLatin(
   text
 ) {
@@ -249,9 +243,6 @@ function hasLatin(
 }
 
 
-/*
-  英語選択肢として妥当か
-*/
 function looksEnglishOption(
   text
 ) {
@@ -269,9 +260,6 @@ function looksEnglishOption(
 }
 
 
-/*
-  日本語選択肢として妥当か
-*/
 function looksJapaneseOption(
   text
 ) {
@@ -288,9 +276,6 @@ function looksJapaneseOption(
 }
 
 
-/*
-  単語比較用
-*/
 function normalizeWord(
   text
 ) {
@@ -701,9 +686,6 @@ app.post(
         );
 
 
-      /*
-        対応する出題形式以外は拒否
-      */
       if (
         ![
           "en-ja",
@@ -720,7 +702,7 @@ app.post(
 
 
       /*
-        5〜15問
+        問題数
       */
       const count =
         Math.max(
@@ -735,7 +717,7 @@ app.post(
 
 
       /*
-        直近200語
+        直近最大200語
       */
       const recentWords =
         Array.isArray(
@@ -799,7 +781,59 @@ app.post(
 
 
       /*
-        20%を復習
+        ============================
+        苦手単語のクールダウン
+        ============================
+
+        直近30語に含まれている
+        苦手単語は復習対象から除外
+      */
+
+      const REVIEW_COOLDOWN =
+        30;
+
+
+      const recentCooldownWords =
+        recentWords.slice(
+          -REVIEW_COOLDOWN
+        );
+
+
+      const cooldownSet =
+        new Set(
+          recentCooldownWords.map(
+            normalizeWord
+          )
+        );
+
+
+      /*
+        クールダウン中でない
+        苦手単語のみ復習候補
+      */
+      const eligibleWeakWords =
+        weakWords.filter(
+          w =>
+            !cooldownSet.has(
+              normalizeWord(
+                w.word
+              )
+            )
+        );
+
+
+      /*
+        苦手回数が多い順
+      */
+      eligibleWeakWords.sort(
+        (a, b) =>
+          b.count -
+          a.count
+      );
+
+
+      /*
+        20%を復習枠に
       */
       const desiredReviewCount =
         Math.round(
@@ -809,21 +843,29 @@ app.post(
 
 
       /*
-        苦手語が足りなければ
-        新規問題に置換
+        候補が少なければ
+        復習数を減らす
       */
       const reviewCount =
         Math.min(
           desiredReviewCount,
-          weakWords.length
+          eligibleWeakWords.length
         );
 
 
+      /*
+        足りない復習分は
+        新規問題にする
+      */
       const newCount =
         count -
         reviewCount;
 
 
+      /*
+        新規問題では
+        直近200語を除外
+      */
       const recentSet =
         new Set(
           recentWords.map(
@@ -832,9 +874,13 @@ app.post(
         );
 
 
-      const weakSet =
+      /*
+        復習対象として
+        実際に使用可能な苦手語
+      */
+      const eligibleWeakSet =
         new Set(
-          weakWords.map(
+          eligibleWeakWords.map(
             w =>
               normalizeWord(
                 w.word
@@ -851,16 +897,24 @@ app.post(
           : "(none)";
 
 
+      const cooldownText =
+        recentCooldownWords.length
+          ? recentCooldownWords.join(
+              ", "
+            )
+          : "(none)";
+
+
       const weakText =
-        weakWords.length
-          ? weakWords
+        eligibleWeakWords.length
+          ? eligibleWeakWords
               .map(
                 w =>
                   `${w.word}${
                     w.meaning_ja
                       ? ` (${w.meaning_ja})`
                       : ""
-                  }`
+                  } [mistakes: ${w.count}]`
               )
               .join(
                 ", "
@@ -869,8 +923,7 @@ app.post(
 
 
       /*
-        モードごとに
-        出題形式を完全固定
+        出題形式を固定
       */
       const modeRule =
         mode === "blank"
@@ -893,7 +946,6 @@ Every question MUST use exactly this format:
 
 - context:
   empty string
-
 
 VALID EXAMPLE:
 
@@ -927,7 +979,6 @@ VALID EXAMPLE:
     "new"
 }
 
-
 IMPORTANT:
 
 - Japanese options are NEVER allowed in blank mode.
@@ -956,7 +1007,6 @@ Every question MUST use exactly this format:
 - context:
   optional short Japanese clarification or empty string
 
-
 IMPORTANT:
 
 - Japanese options are NEVER allowed.
@@ -983,7 +1033,6 @@ Every question MUST use exactly this format:
 - context:
   optional short English example sentence or empty string
 
-
 IMPORTANT:
 
 - English options are NEVER allowed.
@@ -993,7 +1042,7 @@ IMPORTANT:
 
 
       /*
-        最大3回まで生成
+        最大3回まで再生成
       */
       let finalQuestions =
         null;
@@ -1018,13 +1067,13 @@ ${level}
 Topic:
 ${topic}
 
-
-IMPORTANT:
+================================
+IMPORTANT
+================================
 
 The entire set MUST use ONE fixed question format only.
 
-Do NOT mix question types inside the same set.
-
+Do NOT mix question types.
 
 ${modeRule}
 
@@ -1033,20 +1082,14 @@ ${modeRule}
 COMPOSITION
 ================================
 
-Create exactly:
-
-NEW:
+NEW questions:
 ${newCount}
 
-REVIEW:
+REVIEW questions:
 ${reviewCount}
 
 TOTAL:
 ${count}
-
-
-If REVIEW is 0,
-all questions must be NEW.
 
 
 ================================
@@ -1058,9 +1101,9 @@ For NEW questions:
 - choose useful vocabulary appropriate for CEFR ${level}
 - prefer practical and high-frequency vocabulary
 - do NOT use target words from Recent Words
-- do NOT bypass the rule using simple inflections
-- do NOT use plural/singular variants as different vocabulary
-- do NOT use trivial derivatives simply to avoid the exclusion
+- do NOT use simple inflections of recent words to bypass the restriction
+- do NOT treat plural/singular as different target words
+- avoid trivial derivatives of recent words
 
 
 ================================
@@ -1069,22 +1112,32 @@ REVIEW QUESTION RULES
 
 For REVIEW questions:
 
-- target words MUST come from Weak Words
-- REVIEW words may also appear in Recent Words
-- this is intentional spaced review
-- do not use the same weak word twice
+- use ONLY words from Eligible Weak Words
+- these are words the learner previously answered incorrectly
+- prioritize higher mistake counts where reasonable
+- do NOT repeat a review word within the set
+- do NOT use words from Review Cooldown Words
+- review cooldown is strict
 
 
 ================================
 RECENT WORDS
-DO NOT USE FOR NEW QUESTIONS
+DO NOT USE AS NEW QUESTIONS
 ================================
 
 ${recentText}
 
 
 ================================
-WEAK WORDS
+REVIEW COOLDOWN WORDS
+DO NOT USE EVEN FOR REVIEW
+================================
+
+${cooldownText}
+
+
+================================
+ELIGIBLE WEAK WORDS
 AVAILABLE FOR REVIEW
 ================================
 
@@ -1092,12 +1145,12 @@ ${weakText}
 
 
 ================================
-OUTPUT
+OUTPUT FORMAT
 ================================
 
 Return ONLY valid JSON.
 
-Use this exact shape:
+Use exactly this structure:
 
 {
   "questions": [
@@ -1141,15 +1194,18 @@ STRICT RULES
 - exactly ${count} questions
 - exactly ${newCount} questions with source "new"
 - exactly ${reviewCount} questions with source "review"
-- exactly 4 options in every question
+- exactly 4 options for every question
 - exactly one correct answer
 - answer_index must be 0, 1, 2, or 3
 - target words must be unique within the set
 - all questions must obey MODE = ${mode}
-- never mix en-ja, ja-en and blank
+- never mix en-ja, ja-en, and blank
+- NEW target words must not appear in Recent Words
+- REVIEW target words must come only from Eligible Weak Words
+- REVIEW target words must not appear in Review Cooldown Words
 - vary correct-answer positions
 - distractors must be plausible but clearly wrong
-- explanations should be concise
+- concise Japanese explanations
 - no markdown
 - no text outside JSON
 `;
@@ -1186,8 +1242,8 @@ STRICT RULES
           ) {
 
             /*
-              ここで出題形式を
-              サーバー側で検証
+              出題形式を
+              サーバー側でも検証
             */
             validateVocabularyMode(
               rawQ,
@@ -1223,7 +1279,7 @@ STRICT RULES
 
 
             /*
-              セット内重複禁止
+              同一セット内重複禁止
             */
             if (
               seenWords.has(
@@ -1258,7 +1314,7 @@ STRICT RULES
               source !== "review"
             ) {
               source =
-                weakSet.has(
+                eligibleWeakSet.has(
                   key
                 )
                   ? "review"
@@ -1273,13 +1329,32 @@ STRICT RULES
               source === "review"
             ) {
 
+              /*
+                Eligible Weak Words
+                にあるか
+              */
               if (
-                !weakSet.has(
+                !eligibleWeakSet.has(
                   key
                 )
               ) {
                 throw new Error(
-                  `復習問題に苦手単語以外が含まれました: ${word}`
+                  `復習対象外の単語が出題されました: ${word}`
+                );
+              }
+
+
+              /*
+                念のためサーバー側でも
+                クールダウン再確認
+              */
+              if (
+                cooldownSet.has(
+                  key
+                )
+              ) {
+                throw new Error(
+                  `クールダウン中の苦手単語が再出題されました: ${word}`
                 );
               }
 
@@ -1297,7 +1372,7 @@ STRICT RULES
                 )
               ) {
                 throw new Error(
-                  `最近出題した単語が再登場しました: ${word}`
+                  `最近出題した単語が新規問題に再登場しました: ${word}`
                 );
               }
 
@@ -1307,13 +1382,13 @@ STRICT RULES
 
 
             /*
-              blankなら
-              正解選択肢が
-              wordと一致するか確認
+              blankモードでは
+              正解選択肢とwordが一致するか
             */
             if (
               mode === "blank"
             ) {
+
               const correctOption =
                 String(
                   rawQ.options[
@@ -1338,12 +1413,13 @@ STRICT RULES
 
 
             /*
-              en-jaなら
+              en-jaでは
               promptとwordが一致
             */
             if (
               mode === "en-ja"
             ) {
+
               if (
                 normalizeWord(
                   rawQ.prompt
@@ -1420,7 +1496,7 @@ STRICT RULES
 
 
           /*
-            80/20が守られているか
+            新規・復習数チェック
           */
           if (
             actualNew !==
@@ -1611,11 +1687,7 @@ Rules:
 
 - exactly ${count} comprehension questions
 - exactly 4 English options for every question
-- use a mix of:
-  main idea,
-  detail,
-  vocabulary in context,
-  inference
+- use a mix of main idea, detail, vocabulary in context, and inference
 - every answer must be supported by the passage
 - questions should fit CEFR ${level}
 - key_vocabulary must contain 4 to 8 useful words or phrases
@@ -1823,11 +1895,7 @@ Explain:
 
 - what was correct
 - what was missed
-- likely listening causes such as:
-  linking,
-  weak forms,
-  reductions,
-  rhythm
+- likely listening causes such as linking, weak forms, reductions, and rhythm
 - one useful practice tip
 - no markdown
 `;
