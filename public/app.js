@@ -9,7 +9,6 @@ let vocabSet = [];
 let vocabIndex = 0;
 let vocabCorrect = 0;
 let vocabMistakes = [];
-let vocabAdvanceTimer = null;
 
 let reading = null;
 
@@ -92,8 +91,7 @@ function addWeakWord(
 ) {
   if (!word) return;
 
-  const key =
-    word.toLowerCase();
+  const key = word.toLowerCase();
 
   const old =
     progress.weakWords[key] || {
@@ -283,8 +281,7 @@ function wordLevenshtein(
         Math.min(
           dp[i - 1][j] + 1,
           dp[i][j - 1] + 1,
-          dp[i - 1][j - 1] +
-            c
+          dp[i - 1][j - 1] + c
         );
     }
   }
@@ -494,14 +491,12 @@ $("newListeningBtn")
               ...commonSettings(),
 
               mode:
-                $(
-                  "listeningMode"
-                ).value,
+                $("listeningMode")
+                  .value,
 
               length:
-                $(
-                  "listeningLength"
-                ).value
+                $("listeningLength")
+                  .value
             }
           );
 
@@ -539,6 +534,7 @@ $("newListeningBtn")
 
         $("playBtn").disabled =
           false;
+
       } catch (e) {
         $("listeningStatus")
           .textContent =
@@ -548,6 +544,7 @@ $("newListeningBtn")
           .classList.add(
             "error"
           );
+
       } finally {
         btn.disabled =
           false;
@@ -572,11 +569,6 @@ async function playListening() {
       .classList.remove(
         "error"
       );
-
-    /*
-      同じ問題では
-      音声APIを最初の1回だけ使用
-    */
 
     if (
       !listeningAudioUrl
@@ -671,6 +663,7 @@ async function playListening() {
           $("listeningStatus")
             .textContent =
             "内容について3問に答えてください。";
+
         } else {
           $("listeningStatus")
             .textContent =
@@ -683,6 +676,7 @@ async function playListening() {
     $("listeningStatus")
       .textContent =
       "再生中…";
+
   } catch (e) {
     $("listeningStatus")
       .textContent =
@@ -692,6 +686,7 @@ async function playListening() {
       .classList.add(
         "error"
       );
+
   } finally {
     play.disabled =
       false;
@@ -940,12 +935,11 @@ $("dictationCheckBtn")
             .map(
               x =>
                 `<li>
-                  ${escapeHtml(
-                    x
-                  )}
+                  ${escapeHtml(x)}
                 </li>`
             )
             .join("");
+
       } catch {
         $("listeningFeedback")
           .textContent =
@@ -1170,22 +1164,6 @@ async function generateVocab() {
   const btn =
     $("newVocabBtn");
 
-  /*
-    前の自動進行タイマーが
-    残っていたら解除
-  */
-
-  if (
-    vocabAdvanceTimer
-  ) {
-    clearTimeout(
-      vocabAdvanceTimer
-    );
-
-    vocabAdvanceTimer =
-      null;
-  }
-
   try {
     btn.disabled =
       true;
@@ -1261,6 +1239,12 @@ async function generateVocab() {
       );
 
     renderVocabQuestion();
+
+    $("vocabQuiz")
+      .scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
 
   } catch (e) {
     $("vocabStart")
@@ -1381,58 +1365,6 @@ function renderVocabQuestion() {
 }
 
 /*
-  次のVocabulary問題へ
-*/
-
-function goNextVocabQuestion() {
-  if (
-    vocabAdvanceTimer
-  ) {
-    clearTimeout(
-      vocabAdvanceTimer
-    );
-
-    vocabAdvanceTimer =
-      null;
-  }
-
-  vocabIndex++;
-
-  if (
-    vocabIndex <
-    vocabSet.length
-  ) {
-    renderVocabQuestion();
-
-    /*
-      スマホでは次の問題の
-      先頭まで自動スクロール
-    */
-
-    $("vocabQuiz")
-      .scrollIntoView({
-        behavior:
-          "smooth",
-
-        block:
-          "start"
-      });
-
-  } else {
-    finishVocab();
-
-    $("vocabSummary")
-      .scrollIntoView({
-        behavior:
-          "smooth",
-
-        block:
-          "start"
-      });
-  }
-}
-
-/*
   Vocabulary回答
 */
 
@@ -1464,6 +1396,11 @@ function answerVocab(
     );
   }
 
+  /*
+    一度回答したら
+    選択肢を押せないようにする
+  */
+
   document
     .querySelectorAll(
       ".vocab-choice"
@@ -1473,6 +1410,10 @@ function answerVocab(
         b.disabled =
           true;
 
+        /*
+          正解の選択肢
+        */
+
         if (
           i === correct
         ) {
@@ -1480,6 +1421,10 @@ function answerVocab(
             "correct-choice"
           );
         }
+
+        /*
+          間違えて選んだ選択肢
+        */
 
         if (
           i === selected &&
@@ -1491,6 +1436,10 @@ function answerVocab(
         }
       }
     );
+
+  /*
+    正誤と解説を表示
+  */
 
   const box =
     $("vocabFeedback");
@@ -1514,8 +1463,7 @@ function answerVocab(
     <p>
       <b>
         ${escapeHtml(
-          q.word ||
-          ""
+          q.word || ""
         )}
       </b>
 
@@ -1534,10 +1482,6 @@ function answerVocab(
         ""
       )}
     </p>
-
-    <p class="note">
-      自動で次の問題へ進みます…
-    </p>
   `;
 
   box.classList.remove(
@@ -1545,57 +1489,97 @@ function answerVocab(
   );
 
   /*
-    通常は「次へ」を
-    押さなくてよい
+    「次の問題」ボタンを表示
   */
 
   $("vocabNextBtn")
-    .classList.add(
+    .classList.remove(
       "hidden"
     );
 
   /*
-    正解ならテンポよく0.9秒
-    不正解なら解説確認用に1.5秒
-  */
-
-  const delay =
-    good
-      ? 900
-      : 1500;
-
-  vocabAdvanceTimer =
-    setTimeout(
-      () => {
-        goNextVocabQuestion();
-      },
-      delay
-    );
-
-  /*
-    万一自動進行が止まった場合のみ
-    2秒後に予備の「次へ」を表示
+    回答直後に
+    「次の問題」ボタンが
+    画面下部付近に来るよう
+    自動スクロールする
   */
 
   setTimeout(
     () => {
-      if (
-        vocabAdvanceTimer
-      ) {
-        $("vocabNextBtn")
-          .classList.remove(
-            "hidden"
-          );
-      }
+      $("vocabNextBtn")
+        .scrollIntoView({
+          behavior:
+            "smooth",
+
+          block:
+            "end"
+        });
     },
-    2000
+    100
   );
 }
+
+/*
+  「次の問題」ボタン
+*/
 
 $("vocabNextBtn")
   .addEventListener(
     "click",
-    goNextVocabQuestion
+    () => {
+      vocabIndex++;
+
+      if (
+        vocabIndex <
+        vocabSet.length
+      ) {
+        /*
+          次の問題を表示
+        */
+
+        renderVocabQuestion();
+
+        /*
+          次問の先頭まで
+          自動スクロール
+        */
+
+        setTimeout(
+          () => {
+            $("vocabQuiz")
+              .scrollIntoView({
+                behavior:
+                  "smooth",
+
+                block:
+                  "start"
+              });
+          },
+          50
+        );
+
+      } else {
+        /*
+          全問終了
+        */
+
+        finishVocab();
+
+        setTimeout(
+          () => {
+            $("vocabSummary")
+              .scrollIntoView({
+                behavior:
+                  "smooth",
+
+                block:
+                  "start"
+              });
+          },
+          50
+        );
+      }
+    }
   );
 
 function finishVocab() {
