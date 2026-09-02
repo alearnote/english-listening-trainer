@@ -6,8 +6,7 @@ require("dotenv").config();
 const app = express();
 
 const PORT =
-  process.env.PORT ||
-  3000;
+  process.env.PORT || 3000;
 
 const OPENAI_API_KEY =
   process.env.OPENAI_API_KEY;
@@ -64,13 +63,11 @@ function outputText(data) {
   }
 
   return (
-    data.output ||
-    []
+    data.output || []
   )
     .flatMap(
       item =>
-        item.content ||
-        []
+        item.content || []
     )
     .filter(
       item =>
@@ -79,8 +76,7 @@ function outputText(data) {
     )
     .map(
       item =>
-        item.text ||
-        ""
+        item.text || ""
     )
     .join("\n");
 }
@@ -109,12 +105,11 @@ function parseJson(text) {
 async function generateJson(
   prompt
 ) {
-  const r =
+  const response =
     await fetch(
       "https://api.openai.com/v1/responses",
       {
-        method:
-          "POST",
+        method: "POST",
 
         headers: {
           Authorization:
@@ -133,22 +128,24 @@ async function generateJson(
               prompt,
 
             reasoning: {
-              effort:
-                "none"
+              effort: "none"
             }
           })
       }
     );
 
-  const data =
-    await r.json();
 
-  if (!r.ok) {
+  const data =
+    await response.json();
+
+
+  if (!response.ok) {
     throw new Error(
       data.error?.message ||
       "OpenAI API error"
     );
   }
+
 
   return parseJson(
     outputText(data)
@@ -160,9 +157,7 @@ async function generateJson(
    Common validation
 ================================ */
 
-function clampAnswerIndex(
-  q
-) {
+function clampAnswerIndex(q) {
   q.answer_index =
     Math.max(
       0,
@@ -179,34 +174,40 @@ function clampAnswerIndex(
 
 
 function validateQuestions(
-  qs,
+  questions,
   expected
 ) {
   if (
-    !Array.isArray(qs) ||
-    qs.length !== expected
+    !Array.isArray(
+      questions
+    ) ||
+    questions.length !==
+      expected
   ) {
     throw new Error(
       "問題の生成形式が不正でした。もう一度お試しください。"
     );
   }
 
-  qs.forEach(
-    q => {
+
+  questions.forEach(
+    question => {
 
       if (
         !Array.isArray(
-          q.options
+          question.options
         ) ||
-        q.options.length !== 4
+        question.options.length !==
+          4
       ) {
         throw new Error(
           "選択肢の生成形式が不正でした。"
         );
       }
 
+
       clampAnswerIndex(
-        q
+        question
       );
     }
   );
@@ -217,27 +218,21 @@ function validateQuestions(
    Language helpers
 ================================ */
 
-function hasJapanese(
-  text
-) {
+function hasJapanese(text) {
   return /[\u3040-\u30ff\u3400-\u9fff]/u
     .test(
       String(
-        text ||
-        ""
+        text || ""
       )
     );
 }
 
 
-function hasLatin(
-  text
-) {
+function hasLatin(text) {
   return /[A-Za-z]/
     .test(
       String(
-        text ||
-        ""
+        text || ""
       )
     );
 }
@@ -246,16 +241,15 @@ function hasLatin(
 function looksEnglishOption(
   text
 ) {
-  const s =
+  const value =
     String(
-      text ||
-      ""
+      text || ""
     ).trim();
 
   return (
-    s.length > 0 &&
-    hasLatin(s) &&
-    !hasJapanese(s)
+    value.length > 0 &&
+    hasLatin(value) &&
+    !hasJapanese(value)
   );
 }
 
@@ -263,25 +257,21 @@ function looksEnglishOption(
 function looksJapaneseOption(
   text
 ) {
-  const s =
+  const value =
     String(
-      text ||
-      ""
+      text || ""
     ).trim();
 
   return (
-    s.length > 0 &&
-    hasJapanese(s)
+    value.length > 0 &&
+    hasJapanese(value)
   );
 }
 
 
-function normalizeWord(
-  text
-) {
+function normalizeWord(text) {
   return String(
-    text ||
-    ""
+    text || ""
   )
     .trim()
     .toLowerCase()
@@ -302,27 +292,28 @@ function normalizeWord(
 
 
 /* ================================
-   Vocabulary mode validation
+   Vocabulary validation
 ================================ */
 
 function validateVocabularyMode(
-  q,
+  question,
   mode
 ) {
   const prompt =
     String(
-      q.prompt ||
-      ""
+      question.prompt || ""
     ).trim();
+
 
   const options =
     Array.isArray(
-      q.options
+      question.options
     )
-      ? q.options.map(
-          x =>
-            String(x)
-              .trim()
+      ? question.options.map(
+          option =>
+            String(
+              option
+            ).trim()
         )
       : [];
 
@@ -338,8 +329,8 @@ function validateVocabularyMode(
 
   /*
     blank
-    英文穴埋め＋英語4択
   */
+
   if (
     mode === "blank"
   ) {
@@ -347,8 +338,7 @@ function validateVocabularyMode(
       (
         prompt.match(
           /_____/g
-        ) ||
-        []
+        ) || []
       ).length;
 
 
@@ -385,8 +375,8 @@ function validateVocabularyMode(
 
   /*
     en-ja
-    英単語＋日本語4択
   */
+
   if (
     mode === "en-ja"
   ) {
@@ -414,8 +404,8 @@ function validateVocabularyMode(
 
   /*
     ja-en
-    日本語＋英語4択
   */
+
   if (
     mode === "ja-en"
   ) {
@@ -442,6 +432,222 @@ function validateVocabularyMode(
 
 
 /* ================================
+   Listening random categories
+================================ */
+
+/*
+  Randomで使用する
+  シナリオカテゴリ。
+
+  交通だけに偏らないよう、
+  日常・仕事・旅行・サービスなど
+  幅広く分散させる。
+*/
+
+const LISTENING_RANDOM_CATEGORIES = [
+
+  {
+    id: "restaurant",
+    label:
+      "restaurant, cafe, ordering food, or making a reservation"
+  },
+
+  {
+    id: "work",
+    label:
+      "workplace, meeting, coworker, deadline, or office communication"
+  },
+
+  {
+    id: "shopping",
+    label:
+      "shopping, returning an item, asking about a product, or paying"
+  },
+
+  {
+    id: "hotel",
+    label:
+      "hotel, check-in, check-out, room request, or accommodation"
+  },
+
+  {
+    id: "school",
+    label:
+      "school, class, studying, assignment, or campus life"
+  },
+
+  {
+    id: "health",
+    label:
+      "health, pharmacy, clinic, appointment, or describing a minor symptom"
+  },
+
+  {
+    id: "home",
+    label:
+      "home, household task, cooking, cleaning, or a small problem at home"
+  },
+
+  {
+    id: "friends",
+    label:
+      "friends, making plans, changing plans, invitation, or social activity"
+  },
+
+  {
+    id: "phone",
+    label:
+      "phone call, voicemail, message, or contacting someone"
+  },
+
+  {
+    id: "delivery",
+    label:
+      "delivery, package, online order, receiving an item, or shipping"
+  },
+
+  {
+    id: "bank",
+    label:
+      "banking, payment, ATM, bill, or simple financial service"
+  },
+
+  {
+    id: "event",
+    label:
+      "event, concert, museum, movie, ticket, or public activity"
+  },
+
+  {
+    id: "travel",
+    label:
+      "travel planning, sightseeing, airport, luggage, or tourist information"
+  },
+
+  {
+    id: "transport",
+    label:
+      "public transportation, train, bus, taxi, station, or route"
+  },
+
+  {
+    id: "weather",
+    label:
+      "weather, changing plans because of weather, or preparing for conditions"
+  },
+
+  {
+    id: "service",
+    label:
+      "customer service, asking for help, making a request, or solving a service problem"
+  },
+
+  {
+    id: "appointment",
+    label:
+      "appointment, schedule, rescheduling, or confirming a time"
+  },
+
+  {
+    id: "technology",
+    label:
+      "computer, smartphone, internet, simple technical problem, or online service"
+  },
+
+  {
+    id: "neighborhood",
+    label:
+      "neighborhood, local facility, asking for directions, or community activity"
+  },
+
+  {
+    id: "daily",
+    label:
+      "ordinary daily life, errands, routine plans, or a small everyday decision"
+  }
+
+];
+
+
+/*
+  サーバー内で最近選んだRandomカテゴリ。
+
+  Renderが再起動するとリセットされるが、
+  1セッション中の偏り防止には有効。
+*/
+
+let recentRandomCategories =
+  [];
+
+
+/*
+  Randomカテゴリを選択。
+
+  直近5カテゴリをなるべく
+  避ける。
+*/
+
+function chooseListeningCategory() {
+
+  const CATEGORY_COOLDOWN =
+    5;
+
+
+  const blocked =
+    new Set(
+      recentRandomCategories.slice(
+        -CATEGORY_COOLDOWN
+      )
+    );
+
+
+  let candidates =
+    LISTENING_RANDOM_CATEGORIES
+      .filter(
+        category =>
+          !blocked.has(
+            category.id
+          )
+      );
+
+
+  /*
+    念のため候補がなくなった場合
+  */
+
+  if (
+    candidates.length === 0
+  ) {
+    candidates =
+      LISTENING_RANDOM_CATEGORIES;
+  }
+
+
+  const selected =
+    candidates[
+      Math.floor(
+        Math.random() *
+        candidates.length
+      )
+    ];
+
+
+  recentRandomCategories.push(
+    selected.id
+  );
+
+
+  recentRandomCategories =
+    recentRandomCategories.slice(
+      -20
+    );
+
+
+  return selected;
+}
+
+
+/* ================================
    LISTENING
 ================================ */
 
@@ -452,6 +658,7 @@ app.post(
     req,
     res
   ) => {
+
     try {
 
       const mode =
@@ -460,17 +667,20 @@ app.post(
           "dictation"
         );
 
+
       const level =
         String(
           req.body.level ||
           "B1"
         );
 
-      const topic =
+
+      const requestedTopic =
         String(
           req.body.topic ||
-          "Daily conversation"
+          "Random"
         );
+
 
       const length =
         String(
@@ -479,14 +689,152 @@ app.post(
         );
 
 
+      /*
+        app.jsから送られてくる
+        直近20問
+      */
+
+      const recentListening =
+        Array.isArray(
+          req.body.recentListening
+        )
+          ? req.body.recentListening
+              .map(
+                item =>
+                  String(
+                    item || ""
+                  ).trim()
+              )
+              .filter(Boolean)
+              .slice(-20)
+          : [];
+
+
+      /*
+        特に類似を避ける
+        直近5問
+      */
+
+      const veryRecentListening =
+        recentListening.slice(
+          -5
+        );
+
+
+      /*
+        Randomならサーバー側で
+        カテゴリを選ぶ
+      */
+
+      let selectedCategory =
+        null;
+
+
+      let actualTopic =
+        requestedTopic;
+
+
+      if (
+        requestedTopic
+          .trim()
+          .toLowerCase() ===
+        "random"
+      ) {
+
+        selectedCategory =
+          chooseListeningCategory();
+
+
+        actualTopic =
+          selectedCategory.label;
+      }
+
+
+      /*
+        長さ
+      */
+
       const lengthRule =
         length === "short"
           ? "8-14 words"
-          : length ===
-            "medium"
+          : length === "medium"
           ? "15-28 words"
           : "29-50 words";
 
+
+      /*
+        履歴をAIへ渡す
+      */
+
+      const recentText =
+        recentListening.length
+          ? recentListening
+              .map(
+                (sentence, index) =>
+                  `${index + 1}. ${sentence}`
+              )
+              .join("\n")
+          : "(none)";
+
+
+      const veryRecentText =
+        veryRecentListening.length
+          ? veryRecentListening
+              .map(
+                (sentence, index) =>
+                  `${index + 1}. ${sentence}`
+              )
+              .join("\n")
+          : "(none)";
+
+
+      /*
+        Random時の追加ルール
+      */
+
+      const randomRule =
+        selectedCategory
+          ? `
+This request uses RANDOM mode.
+
+For this exercise, use this scenario category:
+
+${selectedCategory.label}
+
+You MUST stay within that broad category,
+but create a fresh and specific situation.
+
+Do not automatically create a transportation-delay story.
+
+In particular, avoid overusing scenarios such as:
+
+- missing a bus
+- missing a train
+- being late for transportation
+- asking when the next bus arrives
+- losing a ticket
+- changing a transportation reservation
+
+unless the selected category specifically requires transportation
+AND the recent history does not contain a similar scenario.
+
+Random means variety of SITUATIONS,
+not merely different wording.
+`
+          : `
+The learner explicitly selected this topic:
+
+${requestedTopic}
+
+Stay within this topic,
+but still create a situation that is meaningfully different
+from the recent listening exercises.
+`;
+
+
+      /*
+        MCQ
+      */
 
       const prompt =
         mode === "mcq"
@@ -496,11 +844,88 @@ Create ONE English listening comprehension exercise for a Japanese learner.
 CEFR:
 ${level}
 
-Topic:
-${topic}
+Requested topic:
+${requestedTopic}
+
+Actual scenario:
+${actualTopic}
 
 Passage length:
 ${lengthRule}
+
+
+================================
+VARIETY RULES
+================================
+
+${randomRule}
+
+
+The learner has already received these recent listening exercises:
+
+${recentText}
+
+
+The FIVE most recent exercises are:
+
+${veryRecentText}
+
+
+STRICT VARIETY REQUIREMENTS:
+
+1. Do NOT repeat the same event or basic story as any of the five most recent exercises.
+
+2. Do NOT merely change nouns while keeping the same scenario.
+
+For example, these count as the SAME basic scenario:
+
+- missing a bus
+- missing a train
+- arriving too late for a subway
+- being late and missing public transportation
+
+Likewise:
+
+- changing a hotel reservation
+- changing a restaurant reservation
+
+may still be too similar if the main listening task is simply rescheduling.
+
+3. Compare the underlying situation, not just vocabulary.
+
+4. Avoid repeating the same combination of:
+   - location
+   - problem
+   - goal
+   - outcome
+
+5. Prefer a different communicative purpose from recent exercises.
+
+Possible purposes include:
+
+- asking for information
+- making a request
+- explaining a problem
+- giving instructions
+- confirming information
+- making a suggestion
+- apologizing
+- changing a plan
+- comparing choices
+- arranging something
+- reporting what happened
+- asking for clarification
+
+6. The exercise must still sound natural.
+
+7. Do not create an unusual or unrealistic story merely to be different.
+
+8. If any proposed scenario feels substantially similar to one of the five most recent exercises, silently choose another scenario before producing the final JSON.
+
+
+================================
+OUTPUT
+================================
 
 Return ONLY valid JSON:
 
@@ -509,10 +934,13 @@ Return ONLY valid JSON:
     "natural spoken English",
 
   "translation":
-    "Japanese translation",
+    "natural Japanese translation",
 
   "listening_tip":
     "short Japanese listening tip",
+
+  "scenario":
+    "very short English description of the scenario",
 
   "questions": [
     {
@@ -571,28 +999,91 @@ Return ONLY valid JSON:
   ]
 }
 
-Rules:
+
+STRICT OUTPUT RULES:
 
 - exactly 3 questions
 - exactly 4 English options per question
 - exactly one correct answer per question
-- all questions must be answerable from the audio
+- every question must be answerable from the audio
 - use natural CEFR ${level} English
-- vary the correct-answer positions
+- vary correct-answer positions
 - avoid obscure proper nouns
 - no markdown
+- no text outside JSON
 `
+
           : `
+
 Create ONE English listening dictation exercise for a Japanese learner.
 
 CEFR:
 ${level}
 
-Topic:
-${topic}
+Requested topic:
+${requestedTopic}
+
+Actual scenario:
+${actualTopic}
 
 Length:
 ${lengthRule}
+
+
+================================
+VARIETY RULES
+================================
+
+${randomRule}
+
+
+The learner has already received these recent listening exercises:
+
+${recentText}
+
+
+The FIVE most recent exercises are:
+
+${veryRecentText}
+
+
+STRICT VARIETY REQUIREMENTS:
+
+1. Do NOT repeat the same event or basic story as any of the five most recent exercises.
+
+2. Compare the underlying situation, not just individual words.
+
+For example:
+
+"missed the bus"
+
+"missed the train"
+
+"arrived too late for the subway"
+
+are all essentially the same scenario.
+
+3. Do NOT simply rewrite a previous situation with different nouns.
+
+4. Avoid repeating the same combination of:
+   - location
+   - problem
+   - goal
+   - outcome
+
+5. Prefer a different communicative purpose from recent exercises.
+
+6. Keep the English natural and useful.
+
+7. Do not create unrealistic situations merely for novelty.
+
+8. If the first scenario you think of is similar to recent history,
+silently choose a different one.
+
+
+================================
+OUTPUT
+================================
 
 Return ONLY valid JSON:
 
@@ -604,29 +1095,99 @@ Return ONLY valid JSON:
     "natural Japanese translation",
 
   "listening_tip":
-    "short Japanese explanation of likely listening difficulty"
+    "short Japanese explanation of likely listening difficulty",
+
+  "scenario":
+    "very short English description of the scenario"
 }
 
-Rules:
+
+STRICT OUTPUT RULES:
 
 - natural useful CEFR ${level} English
+- respect the requested length
 - avoid obscure proper nouns
 - no markdown
+- no text outside JSON
 `;
 
 
-      const data =
-        await generateJson(
-          prompt
-        );
+      /*
+        最大2回まで生成
+      */
+
+      let data =
+        null;
 
 
-      if (
-        mode === "mcq"
+      let lastError =
+        null;
+
+
+      for (
+        let attempt = 1;
+        attempt <= 2;
+        attempt++
       ) {
-        validateQuestions(
-          data.questions,
-          3
+
+        try {
+
+          data =
+            await generateJson(
+              prompt
+            );
+
+
+          if (
+            !data ||
+            !String(
+              data.sentence || ""
+            ).trim()
+          ) {
+            throw new Error(
+              "Listening英文が生成されませんでした。"
+            );
+          }
+
+
+          if (
+            mode === "mcq"
+          ) {
+            validateQuestions(
+              data.questions,
+              3
+            );
+          }
+
+
+          break;
+
+        } catch (
+          generationError
+        ) {
+
+          data =
+            null;
+
+
+          lastError =
+            generationError;
+
+
+          console.warn(
+            `Listening generation attempt ${attempt} failed:`,
+            generationError.message
+          );
+        }
+      }
+
+
+      if (!data) {
+        throw (
+          lastError ||
+          new Error(
+            "Listening問題の生成に失敗しました。"
+          )
         );
       }
 
@@ -635,18 +1196,19 @@ Rules:
         data
       );
 
-    } catch (e) {
+    } catch (error) {
 
       console.error(
         "Listening error:",
-        e
+        error
       );
+
 
       res
         .status(500)
         .json({
           error:
-            e.message ||
+            error.message ||
             "問題作成に失敗しました。"
         });
     }
@@ -665,6 +1227,7 @@ app.post(
     req,
     res
   ) => {
+
     try {
 
       const level =
@@ -673,11 +1236,13 @@ app.post(
           "B1"
         );
 
+
       const topic =
         String(
           req.body.topic ||
           "Daily conversation"
         );
+
 
       const mode =
         String(
@@ -691,9 +1256,7 @@ app.post(
           "en-ja",
           "ja-en",
           "blank"
-        ].includes(
-          mode
-        )
+        ].includes(mode)
       ) {
         throw new Error(
           "Vocabularyの出題形式が不正です。"
@@ -704,6 +1267,7 @@ app.post(
       /*
         問題数
       */
+
       const count =
         Math.max(
           5,
@@ -717,61 +1281,55 @@ app.post(
 
 
       /*
-        直近最大200語
+        直近200語
       */
+
       const recentWords =
         Array.isArray(
           req.body.recentWords
         )
           ? req.body.recentWords
               .map(
-                w =>
+                word =>
                   String(
-                    w ||
-                    ""
+                    word || ""
                   ).trim()
               )
-              .filter(
-                Boolean
-              )
-              .slice(
-                -200
-              )
+              .filter(Boolean)
+              .slice(-200)
           : [];
 
 
       /*
         苦手単語
       */
+
       const weakWords =
         Array.isArray(
           req.body.weakWords
         )
           ? req.body.weakWords
               .map(
-                w => ({
+                item => ({
                   word:
                     String(
-                      w?.word ||
-                      ""
+                      item?.word || ""
                     ).trim(),
 
                   meaning_ja:
                     String(
-                      w?.meaning_ja ||
-                      ""
+                      item?.meaning_ja || ""
                     ).trim(),
 
                   count:
                     Number(
-                      w?.count ||
-                      1
+                      item?.count || 1
                     )
                 })
               )
               .filter(
-                w =>
-                  w.word
+                item =>
+                  item.word
               )
               .slice(
                 0,
@@ -781,12 +1339,10 @@ app.post(
 
 
       /*
-        ============================
-        苦手単語のクールダウン
-        ============================
+        苦手語のクールダウン。
 
-        直近30語に含まれている
-        苦手単語は復習対象から除外
+        直近30語に出ている苦手語は
+        復習対象から外す。
       */
 
       const REVIEW_COOLDOWN =
@@ -808,44 +1364,37 @@ app.post(
 
 
       /*
-        クールダウン中でない
-        苦手単語のみ復習候補
+        クールダウンしていない
+        苦手語だけを復習候補にする
       */
+
       const eligibleWeakWords =
-        weakWords.filter(
-          w =>
-            !cooldownSet.has(
-              normalizeWord(
-                w.word
+        weakWords
+          .filter(
+            item =>
+              !cooldownSet.has(
+                normalizeWord(
+                  item.word
+                )
               )
-            )
-        );
+          )
+          .sort(
+            (a, b) =>
+              b.count -
+              a.count
+          );
 
 
       /*
-        苦手回数が多い順
+        約20%を復習
       */
-      eligibleWeakWords.sort(
-        (a, b) =>
-          b.count -
-          a.count
-      );
 
-
-      /*
-        20%を復習枠に
-      */
       const desiredReviewCount =
         Math.round(
-          count *
-          0.2
+          count * 0.2
         );
 
 
-      /*
-        候補が少なければ
-        復習数を減らす
-      */
       const reviewCount =
         Math.min(
           desiredReviewCount,
@@ -853,19 +1402,11 @@ app.post(
         );
 
 
-      /*
-        足りない復習分は
-        新規問題にする
-      */
       const newCount =
         count -
         reviewCount;
 
 
-      /*
-        新規問題では
-        直近200語を除外
-      */
       const recentSet =
         new Set(
           recentWords.map(
@@ -874,16 +1415,12 @@ app.post(
         );
 
 
-      /*
-        復習対象として
-        実際に使用可能な苦手語
-      */
       const eligibleWeakSet =
         new Set(
           eligibleWeakWords.map(
-            w =>
+            item =>
               normalizeWord(
-                w.word
+                item.word
               )
           )
         );
@@ -909,25 +1446,25 @@ app.post(
         eligibleWeakWords.length
           ? eligibleWeakWords
               .map(
-                w =>
-                  `${w.word}${
-                    w.meaning_ja
-                      ? ` (${w.meaning_ja})`
+                item =>
+                  `${item.word}${
+                    item.meaning_ja
+                      ? ` (${item.meaning_ja})`
                       : ""
-                  } [mistakes: ${w.count}]`
+                  } [mistakes: ${item.count}]`
               )
-              .join(
-                ", "
-              )
+              .join(", ")
           : "(none)";
 
 
       /*
-        出題形式を固定
+        Vocabulary形式を固定
       */
+
       const modeRule =
         mode === "blank"
           ? `
+
 MODE = blank
 
 Every question MUST use exactly this format:
@@ -946,6 +1483,7 @@ Every question MUST use exactly this format:
 
 - context:
   empty string
+
 
 VALID EXAMPLE:
 
@@ -979,6 +1517,7 @@ VALID EXAMPLE:
     "new"
 }
 
+
 IMPORTANT:
 
 - Japanese options are NEVER allowed in blank mode.
@@ -986,8 +1525,10 @@ IMPORTANT:
 - Do not ask the learner to choose a Japanese meaning.
 - Do not mix another vocabulary question type into this set.
 `
+
           : mode === "ja-en"
           ? `
+
 MODE = ja-en
 
 Every question MUST use exactly this format:
@@ -1007,13 +1548,16 @@ Every question MUST use exactly this format:
 - context:
   optional short Japanese clarification or empty string
 
+
 IMPORTANT:
 
 - Japanese options are NEVER allowed.
 - English sentence-completion prompts are NEVER allowed.
 - Do not mix another vocabulary question type into this set.
 `
+
           : `
+
 MODE = en-ja
 
 Every question MUST use exactly this format:
@@ -1033,6 +1577,7 @@ Every question MUST use exactly this format:
 - context:
   optional short English example sentence or empty string
 
+
 IMPORTANT:
 
 - English options are NEVER allowed.
@@ -1042,10 +1587,12 @@ IMPORTANT:
 
 
       /*
-        最大3回まで再生成
+        最大3回
       */
+
       let finalQuestions =
         null;
+
 
       let lastError =
         null;
@@ -1056,9 +1603,11 @@ IMPORTANT:
         attempt <= 3;
         attempt++
       ) {
+
         try {
 
           const prompt = `
+
 Create exactly ${count} English vocabulary multiple-choice questions for a Japanese learner.
 
 CEFR level:
@@ -1066,6 +1615,7 @@ ${level}
 
 Topic:
 ${topic}
+
 
 ================================
 IMPORTANT
@@ -1113,16 +1663,13 @@ REVIEW QUESTION RULES
 For REVIEW questions:
 
 - use ONLY words from Eligible Weak Words
-- these are words the learner previously answered incorrectly
 - prioritize higher mistake counts where reasonable
 - do NOT repeat a review word within the set
 - do NOT use words from Review Cooldown Words
-- review cooldown is strict
 
 
 ================================
 RECENT WORDS
-DO NOT USE AS NEW QUESTIONS
 ================================
 
 ${recentText}
@@ -1130,7 +1677,6 @@ ${recentText}
 
 ================================
 REVIEW COOLDOWN WORDS
-DO NOT USE EVEN FOR REVIEW
 ================================
 
 ${cooldownText}
@@ -1138,19 +1684,16 @@ ${cooldownText}
 
 ================================
 ELIGIBLE WEAK WORDS
-AVAILABLE FOR REVIEW
 ================================
 
 ${weakText}
 
 
 ================================
-OUTPUT FORMAT
+OUTPUT
 ================================
 
 Return ONLY valid JSON.
-
-Use exactly this structure:
 
 {
   "questions": [
@@ -1187,25 +1730,23 @@ Use exactly this structure:
 }
 
 
-================================
-STRICT RULES
-================================
+STRICT RULES:
 
 - exactly ${count} questions
-- exactly ${newCount} questions with source "new"
-- exactly ${reviewCount} questions with source "review"
-- exactly 4 options for every question
+- exactly ${newCount} source "new"
+- exactly ${reviewCount} source "review"
+- exactly 4 options per question
 - exactly one correct answer
 - answer_index must be 0, 1, 2, or 3
-- target words must be unique within the set
+- target words must be unique
 - all questions must obey MODE = ${mode}
-- never mix en-ja, ja-en, and blank
-- NEW target words must not appear in Recent Words
-- REVIEW target words must come only from Eligible Weak Words
-- REVIEW target words must not appear in Review Cooldown Words
+- never mix en-ja, ja-en and blank
+- NEW words must not appear in Recent Words
+- REVIEW words must come from Eligible Weak Words
+- REVIEW words must not appear in Review Cooldown Words
 - vary correct-answer positions
-- distractors must be plausible but clearly wrong
-- concise Japanese explanations
+- distractors must be plausible
+- explanations must be concise
 - no markdown
 - no text outside JSON
 `;
@@ -1226,34 +1767,33 @@ STRICT RULES
           const seenWords =
             new Set();
 
+
           let actualNew =
             0;
 
+
           let actualReview =
             0;
+
 
           const cleaned =
             [];
 
 
           for (
-            const rawQ
+            const rawQuestion
             of data.questions
           ) {
 
-            /*
-              出題形式を
-              サーバー側でも検証
-            */
             validateVocabularyMode(
-              rawQ,
+              rawQuestion,
               mode
             );
 
 
             const word =
               String(
-                rawQ.word ||
+                rawQuestion.word ||
                 ""
               ).trim();
 
@@ -1279,12 +1819,11 @@ STRICT RULES
 
 
             /*
-              同一セット内重複禁止
+              セット内重複禁止
             */
+
             if (
-              seenWords.has(
-                key
-              )
+              seenWords.has(key)
             ) {
               throw new Error(
                 `同じ単語が重複しました: ${word}`
@@ -1300,9 +1839,10 @@ STRICT RULES
             /*
               source
             */
+
             let source =
               String(
-                rawQ.source ||
+                rawQuestion.source ||
                 ""
               )
                 .trim()
@@ -1313,6 +1853,7 @@ STRICT RULES
               source !== "new" &&
               source !== "review"
             ) {
+
               source =
                 eligibleWeakSet.has(
                   key
@@ -1323,16 +1864,13 @@ STRICT RULES
 
 
             /*
-              復習問題
+              review
             */
+
             if (
               source === "review"
             ) {
 
-              /*
-                Eligible Weak Words
-                にあるか
-              */
               if (
                 !eligibleWeakSet.has(
                   key
@@ -1344,10 +1882,6 @@ STRICT RULES
               }
 
 
-              /*
-                念のためサーバー側でも
-                クールダウン再確認
-              */
               if (
                 cooldownSet.has(
                   key
@@ -1364,8 +1898,9 @@ STRICT RULES
             } else {
 
               /*
-                新規問題
+                new
               */
+
               if (
                 recentSet.has(
                   key
@@ -1382,21 +1917,20 @@ STRICT RULES
 
 
             /*
-              blankモードでは
-              正解選択肢とwordが一致するか
+              blankチェック
             */
+
             if (
               mode === "blank"
             ) {
 
               const correctOption =
                 String(
-                  rawQ.options[
+                  rawQuestion.options[
                     Number(
-                      rawQ.answer_index
+                      rawQuestion.answer_index
                     )
-                  ] ||
-                  ""
+                  ] || ""
                 ).trim();
 
 
@@ -1413,16 +1947,16 @@ STRICT RULES
 
 
             /*
-              en-jaでは
-              promptとwordが一致
+              en-jaチェック
             */
+
             if (
               mode === "en-ja"
             ) {
 
               if (
                 normalizeWord(
-                  rawQ.prompt
+                  rawQuestion.prompt
                 ) !== key
               ) {
                 throw new Error(
@@ -1434,7 +1968,7 @@ STRICT RULES
 
             const answerIndex =
               Number(
-                rawQ.answer_index
+                rawQuestion.answer_index
               );
 
 
@@ -1457,20 +1991,20 @@ STRICT RULES
             cleaned.push({
               prompt:
                 String(
-                  rawQ.prompt ||
+                  rawQuestion.prompt ||
                   ""
                 ),
 
               context:
                 String(
-                  rawQ.context ||
+                  rawQuestion.context ||
                   ""
                 ),
 
               options:
-                rawQ.options.map(
-                  x =>
-                    String(x)
+                rawQuestion.options.map(
+                  option =>
+                    String(option)
                 ),
 
               answer_index:
@@ -1480,13 +2014,13 @@ STRICT RULES
 
               meaning_ja:
                 String(
-                  rawQ.meaning_ja ||
+                  rawQuestion.meaning_ja ||
                   ""
                 ),
 
               explanation_ja:
                 String(
-                  rawQ.explanation_ja ||
+                  rawQuestion.explanation_ja ||
                   ""
                 ),
 
@@ -1495,9 +2029,6 @@ STRICT RULES
           }
 
 
-          /*
-            新規・復習数チェック
-          */
           if (
             actualNew !==
             newCount
@@ -1521,6 +2052,7 @@ STRICT RULES
           finalQuestions =
             cleaned;
 
+
           break;
 
         } catch (
@@ -1539,9 +2071,6 @@ STRICT RULES
       }
 
 
-      /*
-        3回とも失敗
-      */
       if (
         !finalQuestions
       ) {
@@ -1559,11 +2088,11 @@ STRICT RULES
           finalQuestions
       });
 
-    } catch (e) {
+    } catch (error) {
 
       console.error(
         "Vocabulary error:",
-        e
+        error
       );
 
 
@@ -1571,7 +2100,7 @@ STRICT RULES
         .status(500)
         .json({
           error:
-            e.message ||
+            error.message ||
             "単語問題の作成に失敗しました。"
         });
     }
@@ -1590,6 +2119,7 @@ app.post(
     req,
     res
   ) => {
+
     try {
 
       const level =
@@ -1598,17 +2128,20 @@ app.post(
           "B1"
         );
 
+
       const topic =
         String(
           req.body.topic ||
           "Daily conversation"
         );
 
+
       const length =
         String(
           req.body.length ||
           "medium"
         );
+
 
       const count =
         Math.max(
@@ -1625,13 +2158,13 @@ app.post(
       const wordRule =
         length === "short"
           ? "90-130"
-          : length ===
-            "medium"
+          : length === "medium"
           ? "160-230"
           : "280-380";
 
 
       const prompt = `
+
 Create ONE English reading comprehension exercise for a Japanese learner.
 
 CEFR:
@@ -1683,11 +2216,12 @@ Return ONLY valid JSON:
   ]
 }
 
+
 Rules:
 
 - exactly ${count} comprehension questions
 - exactly 4 English options for every question
-- use a mix of main idea, detail, vocabulary in context, and inference
+- use a mix of main idea, detail, vocabulary in context and inference
 - every answer must be supported by the passage
 - questions should fit CEFR ${level}
 - key_vocabulary must contain 4 to 8 useful words or phrases
@@ -1712,11 +2246,11 @@ Rules:
         data
       );
 
-    } catch (e) {
+    } catch (error) {
 
       console.error(
         "Reading error:",
-        e
+        error
       );
 
 
@@ -1724,7 +2258,7 @@ Rules:
         .status(500)
         .json({
           error:
-            e.message ||
+            error.message ||
             "リーディング問題の作成に失敗しました。"
         });
     }
@@ -1743,6 +2277,7 @@ app.post(
     req,
     res
   ) => {
+
     try {
 
       const text =
@@ -1762,12 +2297,11 @@ app.post(
       }
 
 
-      const r =
+      const response =
         await fetch(
           "https://api.openai.com/v1/audio/speech",
           {
-            method:
-              "POST",
+            method: "POST",
 
             headers: {
               Authorization:
@@ -1795,15 +2329,15 @@ app.post(
         );
 
 
-      if (!r.ok) {
+      if (!response.ok) {
         return res
           .status(
-            r.status
+            response.status
           )
           .json({
             error:
               (
-                await r.text()
+                await response.text()
               ) ||
               "音声生成に失敗しました。"
           });
@@ -1818,15 +2352,15 @@ app.post(
 
       res.send(
         Buffer.from(
-          await r.arrayBuffer()
+          await response.arrayBuffer()
         )
       );
 
-    } catch (e) {
+    } catch (error) {
 
       console.error(
         "Speech error:",
-        e
+        error
       );
 
 
@@ -1834,7 +2368,7 @@ app.post(
         .status(500)
         .json({
           error:
-            e.message ||
+            error.message ||
             "音声生成に失敗しました。"
         });
     }
@@ -1853,6 +2387,7 @@ app.post(
     req,
     res
   ) => {
+
     try {
 
       const sentence =
@@ -1860,6 +2395,7 @@ app.post(
           req.body.sentence ||
           ""
         );
+
 
       const answer =
         String(
@@ -1869,6 +2405,7 @@ app.post(
 
 
       const prompt = `
+
 You are an English listening coach for a Japanese learner.
 
 Correct English:
@@ -1878,6 +2415,7 @@ ${sentence}
 Learner's dictation:
 
 ${answer}
+
 
 Return ONLY valid JSON:
 
@@ -1891,11 +2429,12 @@ Return ONLY valid JSON:
   ]
 }
 
+
 Explain:
 
 - what was correct
 - what was missed
-- likely listening causes such as linking, weak forms, reductions, and rhythm
+- likely listening causes such as linking, weak forms, reductions and rhythm
 - one useful practice tip
 - no markdown
 `;
@@ -1911,11 +2450,11 @@ Explain:
         data
       );
 
-    } catch (e) {
+    } catch (error) {
 
       console.error(
         "Explain error:",
-        e
+        error
       );
 
 
@@ -1923,7 +2462,7 @@ Explain:
         .status(500)
         .json({
           error:
-            e.message ||
+            error.message ||
             "解説生成に失敗しました。"
         });
     }
