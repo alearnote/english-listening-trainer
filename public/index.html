@@ -2,240 +2,95 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>English Trainer</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <main class="app">
-    <header class="hero">
-      <div>
-        <p class="eyebrow">AI ENGLISH PRACTICE</p>
-        <h1>English Trainer</h1>
-        <p class="sub">Listening・Vocabulary・Reading を1つのアプリで</p>
-      </div>
-      <div class="today-card">
-        <span>Today's progress</span>
-        <strong id="todayTotal">0</strong>
-      </div>
+  <div class="app-shell">
+    <header class="app-header">
+      <div><h1>English Trainer</h1><p>Listening・Vocabulary・Reading</p></div>
     </header>
 
-    <nav class="tabs" aria-label="学習カテゴリ">
+    <nav class="tabs">
       <button class="tab active" data-tab="listening">🎧 Listening</button>
       <button class="tab" data-tab="vocabulary">🧠 Vocabulary</button>
       <button class="tab" data-tab="reading">📖 Reading</button>
       <button class="tab" data-tab="progress">📊 Progress</button>
     </nav>
 
-    <section class="panel controls">
-      <label>Level
-        <select id="level">
-          <option>A1</option><option>A2</option><option selected>B1</option>
-          <option>B2</option><option>C1</option><option>C2</option>
-        </select>
-      </label>
-      <label>Topic
-        <select id="topic">
-          <option>Daily conversation</option>
-          <option>Travel</option>
-          <option>Work</option>
-          <option>School</option>
-          <option>Shopping</option>
-          <option>News</option>
-          <option>Medical English</option>
-          <option>Random</option>
-        </select>
-      </label>
-      <div class="setting-note">Level / Topic は各モード共通です。</div>
+    <section class="common-settings card">
+      <div class="settings-grid">
+        <label><span>Level</span><select id="level"><option>A1</option><option>A2</option><option selected>B1</option><option>B2</option><option>C1</option><option>C2</option></select></label>
+        <label><span>Topic</span><select id="topic"><option>Daily conversation</option><option>Travel</option><option>Work</option><option>School</option><option>Shopping</option><option>News</option><option>Medical English</option><option selected>Random</option></select></label>
+      </div>
     </section>
 
-    <section id="tab-listening" class="tab-page">
-      <section class="panel">
-        <div class="mode-row">
-          <label>Listening mode
-            <select id="listeningMode">
-              <option value="dictation">書き取り</option>
-              <option value="mcq">内容理解 4択 × 3問</option>
-            </select>
-          </label>
-          <label>Length
-            <select id="listeningLength">
-              <option value="short">Short</option>
-              <option value="medium">Medium</option>
-              <option value="long">Long</option>
-            </select>
-          </label>
-          <button id="newListeningBtn" class="primary">＋ 新しい問題</button>
-        </div>
-      </section>
-
-      <section class="panel listen">
-        <div class="section-title"><span>1</span><h2>Listen</h2></div>
-        <div class="play-row">
-          <button id="playBtn" class="play" disabled aria-label="音声を再生">▶</button>
-          <div class="listen-info">
-            <div class="status" id="listeningStatus">「新しい問題」を押してください</div>
-            <div class="speed-row">
-              <span>Speed</span>
-              <button class="speed" data-speed="0.75">0.75×</button>
-              <button class="speed" data-speed="0.9">0.9×</button>
-              <button class="speed active" data-speed="1">1.0×</button>
-              <button class="speed" data-speed="1.15">1.15×</button>
-            </div>
+    <main>
+      <section id="tab-listening" class="tab-page">
+        <div class="card">
+          <div class="settings-grid">
+            <label><span>出題形式</span><select id="listeningMode"><option value="dictation">ディクテーション</option><option value="mcq">内容理解 4択×3問</option></select></label>
+            <label><span>長さ</span><select id="listeningLength"><option value="short">短い</option><option value="medium" selected>標準</option><option value="long">長い</option></select></label>
           </div>
+          <div class="toolbar"><button id="newListeningBtn" class="primary">＋ 新しい問題</button><button id="playBtn" disabled>▶ 音声再生</button><button id="replayBtn">↻ もう一度</button></div>
+          <div class="speed-row"><span>速度</span><button class="speed" data-speed="0.75">0.75×</button><button class="speed" data-speed="0.9">0.9×</button><button class="speed active" data-speed="1">1.0×</button><button class="speed" data-speed="1.15">1.15×</button></div>
+          <audio id="audio" preload="none"></audio><p id="listeningStatus" class="status">「新しい問題」を押してください</p>
+        </div>
+
+        <div id="dictationPanel" class="card"><label class="stack"><span>聞こえた英文</span><textarea id="dictationAnswer" rows="4" disabled placeholder="英文を入力"></textarea></label><button id="dictationCheckBtn" class="primary" disabled>答え合わせ</button></div>
+        <div id="listeningMcqPanel" class="card hidden"><h2>内容理解</h2><div id="listeningQuestions"></div><button id="listeningMcqCheckBtn" class="primary" disabled>答え合わせ</button></div>
+
+        <div id="listeningResult" class="card hidden">
+          <div class="score-box"><div id="listeningScore" class="score">—</div><div><div id="listeningScoreLabel" class="muted"></div><div id="listeningScoreMsg"></div></div></div>
+          <div id="dictationYourAnswer" class="hidden"><h3>Your answer</h3><p id="dictationYourAnswerText"></p></div>
+          <h3>Transcript</h3><p id="listeningTranscript"></p><h3>日本語訳</h3><p id="listeningTranslation"></p><h3>Listening tip</h3><p id="listeningTip"></p>
+          <div id="listeningReview" class="hidden"></div><div id="listeningCoach" class="hidden"><h3>AI Coach</h3><p id="listeningFeedback"></p><ul id="listeningFocus"></ul></div>
+          <button id="nextListeningBtn">次の問題</button>
         </div>
       </section>
 
-      <section id="dictationPanel" class="panel">
-        <div class="section-title"><span>2</span><h2>What did you hear?</h2></div>
-        <textarea id="dictationAnswer" rows="4" placeholder="聞こえた英文をここに入力してください…" disabled></textarea>
-        <button id="dictationCheckBtn" class="primary wide" disabled>採点する</button>
-      </section>
-
-      <section id="listeningMcqPanel" class="panel hidden">
-        <div class="section-title"><span>2</span><h2>Choose the best answer</h2></div>
-        <p class="note">音声を最後まで聞くと、4択問題3問が表示されます。</p>
-        <div id="listeningQuestions"></div>
-        <button id="listeningMcqCheckBtn" class="primary wide" disabled>3問を採点する</button>
-      </section>
-
-      <section id="listeningResult" class="panel result hidden">
-        <div class="score-wrap">
-          <div class="score" id="listeningScore">0%</div>
-          <div><strong id="listeningScoreLabel">Score</strong><p id="listeningScoreMsg"></p></div>
-        </div>
-        <div id="dictationYourAnswer" class="answer-box hidden">
-          <div class="label">YOUR ANSWER</div><div id="dictationYourAnswerText"></div>
-        </div>
-        <div id="listeningReview" class="hidden"></div>
-        <div class="answer-box correct">
-          <div class="label">TRANSCRIPT</div><div id="listeningTranscript"></div>
-        </div>
-        <details><summary>日本語訳を見る</summary><p id="listeningTranslation"></p></details>
-        <div id="listeningCoach" class="coach hidden">
-          <div class="label">AI COACH</div><p id="listeningFeedback"></p><ul id="listeningFocus"></ul>
-        </div>
-        <div class="tip"><strong>Listening tip</strong><p id="listeningTip"></p></div>
-        <div class="bottom-actions">
-          <button id="replayBtn">↻ もう一度聞く</button>
-          <button id="nextListeningBtn" class="primary">次の問題 →</button>
-        </div>
-      </section>
-      <audio id="audio"></audio>
-    </section>
-
-    <section id="tab-vocabulary" class="tab-page hidden">
-      <section class="panel">
-        <div class="mode-row">
-          <label>Vocabulary mode
-            <select id="vocabMode">
-              <option value="en-ja">英語 → 日本語 4択</option>
-              <option value="ja-en">日本語 → 英語 4択</option>
-              <option value="blank">英文の空欄補充 4択</option>
-            </select>
-          </label>
-          <label>Questions
-            <select id="vocabCount"><option>5</option><option selected>10</option><option>15</option></select>
-          </label>
+      <section id="tab-vocabulary" class="tab-page hidden">
+        <div class="card">
+          <div class="settings-grid">
+            <label><span>出題形式</span><select id="vocabMode"><option value="en-ja">英 → 日</option><option value="ja-en">日 → 英</option><option value="blank">英文穴埋め</option></select></label>
+            <label><span>回答方式</span><select id="vocabAnswerMode"><option value="choice">4択</option><option value="input">入力回答（AI判定）</option></select></label>
+            <label><span>問題数</span><select id="vocabCount"><option value="5">5問</option><option value="10" selected>10問</option><option value="15">15問</option></select></label>
+          </div>
           <button id="newVocabBtn" class="primary">＋ 10問作る</button>
         </div>
-      </section>
 
-      <section id="vocabStart" class="panel empty-state">
-        <div class="empty-icon">🧠</div>
-        <h2>Vocabulary practice</h2>
-        <p>レベルとトピックに合った単語問題をまとめて生成します。</p>
-      </section>
+        <div id="vocabStart" class="card empty-state"><div class="empty-icon">🧠</div><h2>Vocabulary</h2><p>4択または入力回答で学習できます。</p></div>
 
-      <section id="vocabQuiz" class="panel hidden">
-        <div class="quiz-meta">
-          <span id="vocabProgress">1 / 10</span>
-          <span id="vocabRunningScore">Score 0</span>
+        <div id="vocabQuiz" class="card hidden">
+          <div class="progress-head"><span id="vocabProgress">1 / 10</span><span id="vocabRunningScore">Score 0</span></div>
+          <div class="bar"><div id="vocabBar"></div></div>
+          <h2 id="vocabPrompt"></h2><p id="vocabContext" class="muted"></p>
+          <div id="vocabOptions"></div>
+          <div id="vocabInputArea" class="hidden"><input id="vocabInputAnswer" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="回答を入力"><button id="vocabInputSubmitBtn" class="primary">回答する</button></div>
+          <div id="vocabFeedback" class="feedback-box hidden"></div><button id="vocabNextBtn" class="hidden">次の問題</button>
         </div>
-        <div class="progress-bar"><div id="vocabBar"></div></div>
-        <p class="vocab-prompt" id="vocabPrompt"></p>
-        <p class="vocab-context hidden" id="vocabContext"></p>
-        <div id="vocabOptions" class="option-list"></div>
-        <div id="vocabFeedback" class="feedback-box hidden"></div>
-        <button id="vocabNextBtn" class="primary wide hidden">次へ →</button>
+
+        <div id="vocabSummary" class="card hidden"><div class="score-box"><div id="vocabFinalScore" class="score">—</div><div id="vocabSummaryMsg"></div></div><div id="vocabReview"></div><button id="vocabAgainBtn">もう一度</button></div>
       </section>
 
-      <section id="vocabSummary" class="panel hidden">
-        <div class="score-wrap">
-          <div class="score" id="vocabFinalScore">0/10</div>
-          <div><strong>Vocabulary result</strong><p id="vocabSummaryMsg"></p></div>
+      <section id="tab-reading" class="tab-page hidden">
+        <div class="card">
+          <div class="settings-grid">
+            <label><span>文章の長さ</span><select id="readingLength"><option value="short">短い</option><option value="medium" selected>標準</option><option value="long">長い</option></select></label>
+            <label><span>問題数</span><select id="readingCount"><option value="3">3問</option><option value="4" selected>4問</option><option value="5">5問</option></select></label>
+          </div><button id="newReadingBtn" class="primary">＋ 新しい文章</button>
         </div>
-        <div id="vocabReview"></div>
-        <button id="vocabAgainBtn" class="primary wide">新しい単語セットを作る</button>
-      </section>
-    </section>
-
-    <section id="tab-reading" class="tab-page hidden">
-      <section class="panel">
-        <div class="mode-row">
-          <label>Passage length
-            <select id="readingLength">
-              <option value="short">Short</option>
-              <option value="medium" selected>Medium</option>
-              <option value="long">Long</option>
-            </select>
-          </label>
-          <label>Questions
-            <select id="readingCount"><option>3</option><option selected>4</option><option>5</option></select>
-          </label>
-          <button id="newReadingBtn" class="primary">＋ 新しい文章</button>
-        </div>
+        <div id="readingStart" class="card empty-state"><div class="empty-icon">📖</div><h2>Reading</h2><p>英文と読解問題をまとめて生成します。</p></div>
+        <div id="readingQuiz" class="hidden"><div class="card"><h2>Passage</h2><p id="readingPassage" class="reading-passage"></p></div><div class="card"><h2>Questions</h2><div id="readingQuestions"></div><button id="readingCheckBtn" class="primary" disabled>答え合わせ</button></div></div>
+        <div id="readingResult" class="card hidden"><div class="score-box"><div id="readingScore" class="score">—</div><div id="readingScoreMsg"></div></div><div id="readingReview"></div><h3>日本語訳</h3><p id="readingTranslation"></p><h3>Key vocabulary</h3><div id="readingVocabulary"></div><button id="nextReadingBtn">次の文章</button></div>
       </section>
 
-      <section id="readingStart" class="panel empty-state">
-        <div class="empty-icon">📖</div>
-        <h2>Reading practice</h2>
-        <p>CEFRレベルに合わせた英文と内容理解問題を生成します。</p>
+      <section id="tab-progress" class="tab-page hidden">
+        <div class="card"><h2>Today's progress</h2><div class="stats"><div><strong id="statListening">0</strong><span>Listening</span></div><div><strong id="statVocabulary">0</strong><span>Vocabulary</span></div><div><strong id="statReading">0</strong><span>Reading</span></div><div><strong id="statAccuracy">—</strong><span>Accuracy</span></div></div><p>今日の合計: <strong id="todayTotal">0</strong></p><h3>苦手単語</h3><div id="weakWords" class="weak-list"></div><button id="clearProgressBtn" class="danger">今日の記録をリセット</button></div>
       </section>
-
-      <section id="readingQuiz" class="hidden">
-        <article class="panel passage-card">
-          <div class="section-title"><span>1</span><h2>Read the passage</h2></div>
-          <div id="readingPassage" class="passage"></div>
-        </article>
-        <section class="panel">
-          <div class="section-title"><span>2</span><h2>Answer the questions</h2></div>
-          <div id="readingQuestions"></div>
-          <button id="readingCheckBtn" class="primary wide" disabled>採点する</button>
-        </section>
-      </section>
-
-      <section id="readingResult" class="panel hidden">
-        <div class="score-wrap">
-          <div class="score" id="readingScore">0/4</div>
-          <div><strong>Reading score</strong><p id="readingScoreMsg"></p></div>
-        </div>
-        <div id="readingReview"></div>
-        <details><summary>日本語訳を見る</summary><p id="readingTranslation"></p></details>
-        <div class="tip"><strong>Key vocabulary</strong><div id="readingVocabulary"></div></div>
-        <button id="nextReadingBtn" class="primary wide">次の文章 →</button>
-      </section>
-    </section>
-
-    <section id="tab-progress" class="tab-page hidden">
-      <section class="panel">
-        <div class="section-title"><span>✓</span><h2>Today's progress</h2></div>
-        <div class="stats-grid">
-          <div class="stat"><span>Listening</span><strong id="statListening">0</strong><small>completed</small></div>
-          <div class="stat"><span>Vocabulary</span><strong id="statVocabulary">0</strong><small>questions</small></div>
-          <div class="stat"><span>Reading</span><strong id="statReading">0</strong><small>passages</small></div>
-          <div class="stat"><span>Overall accuracy</span><strong id="statAccuracy">—</strong><small>today</small></div>
-        </div>
-      </section>
-      <section class="panel">
-        <div class="section-title"><span>!</span><h2>苦手単語</h2></div>
-        <p class="note">Vocabularyで間違えた単語を、この端末のブラウザ内に記録します。</p>
-        <div id="weakWords" class="weak-words"></div>
-        <button id="clearProgressBtn" class="danger-button">今日の学習履歴をリセット</button>
-      </section>
-    </section>
-  </main>
-
-  <script src="app.js"></script>
+    </main>
+  </div>
+  <script src="/app.js"></script>
 </body>
 </html>
