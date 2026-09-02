@@ -18,3 +18,19 @@
   margin: 0;
   line-height: 1.7;
 }
+
+.vocab-input-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.vocab-input-actions > button {
+  flex: 1 1 0;
+}
+
+@media (max-width: 640px) {
+  .vocab-input-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+}
