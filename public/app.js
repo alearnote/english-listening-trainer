@@ -16,6 +16,7 @@ const VOCAB_HISTORY_KEY = "englishTrainerV2VocabHistory";
 const VOCAB_HISTORY_LIMIT = 200;
 const LISTENING_HISTORY_KEY = "englishTrainerV2ListeningHistory";
 const LISTENING_HISTORY_LIMIT = 20;
+const VOCAB_MASTERY_KEY = "englishTrainerV3VocabMastery";
 
 function escapeHtml(s) {
   return String(s ?? "")
@@ -114,14 +115,102 @@ function addWeakWord(word, meaning="") {
   old.count += 1;
   if (meaning) old.meaning = meaning;
   progress.weakWords[key] = old;
+  recordVocabWrong(word, meaning);
   saveProgress();
 }
 
-function getWeakWordsForReview(limit=40) {
-  return Object.values(progress.weakWords || {})
-    .sort((a,b)=>(b.count||0)-(a.count||0))
-    .slice(0,limit)
-    .map(w=>({word:w.word, meaning_ja:w.meaning||"", count:w.count||1}));
+
+function loadVocabMastery() {
+  try {
+    const data = JSON.parse(localStorage.getItem(VOCAB_MASTERY_KEY) || "{}");
+    return data && typeof data === "object" && !Array.isArray(data) ? data : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveVocabMastery(data) {
+  localStorage.setItem(VOCAB_MASTERY_KEY, JSON.stringify(data || {}));
+}
+
+function vocabMasteryKey(word) {
+  return String(word || "").trim().toLowerCase();
+}
+
+function recordVocabWrong(word, meaning = "") {
+  const key = vocabMasteryKey(word);
+  if (!key) return;
+
+  const data = loadVocabMastery();
+  const old = data[key] || {
+    word: String(word || "").trim(),
+    meaning: String(meaning || ""),
+    wrongCount: 0,
+    correctStreak: 0,
+    mastered: false
+  };
+
+  old.word = String(word || old.word || "").trim();
+  if (meaning) old.meaning = String(meaning);
+  old.wrongCount = (old.wrongCount || 0) + 1;
+  old.correctStreak = 0;
+  old.mastered = false;
+
+  data[key] = old;
+  saveVocabMastery(data);
+}
+
+function recordVocabCorrect(word, meaning = "") {
+  const key = vocabMasteryKey(word);
+  if (!key) return false;
+
+  const data = loadVocabMastery();
+  const old = data[key];
+
+  // 「苦手問題」として登録済みの単語だけ連続正解を数える。
+  if (!old || old.mastered || !(old.wrongCount > 0)) {
+    return false;
+  }
+
+  if (meaning) old.meaning = String(meaning);
+  old.correctStreak = (old.correctStreak || 0) + 1;
+
+  if (old.correctStreak >= 3) {
+    old.correctStreak = 3;
+    old.mastered = true;
+
+    // Progress画面の苦手単語表示からも外す。
+    if (progress.weakWords && progress.weakWords[key]) {
+      delete progress.weakWords[key];
+    }
+  }
+
+  data[key] = old;
+  saveVocabMastery(data);
+  saveProgress();
+
+  return Boolean(old.mastered);
+}
+
+function getWeakWordsForReview(limit = 40) {
+  return Object.values(loadVocabMastery())
+    .filter(w => w && !w.mastered && (w.wrongCount || 0) > 0)
+    .sort((a, b) => (b.wrongCount || 0) - (a.wrongCount || 0))
+    .slice(0, limit)
+    .map(w => ({
+      word: w.word,
+      meaning_ja: w.meaning || "",
+      count: w.wrongCount || 1,
+      correctStreak: w.correctStreak || 0
+    }));
+}
+
+function getMasteredWords(limit = 500) {
+  return Object.values(loadVocabMastery())
+    .filter(w => w && w.mastered)
+    .slice(-limit)
+    .map(w => w.word)
+    .filter(Boolean);
 }
 
 function renderProgress() {
@@ -282,13 +371,13 @@ async function generateVocab(){
   const btn=$("newVocabBtn");
   try{
     btn.disabled=true;$("vocabStart").classList.remove("hidden");$("vocabStart").innerHTML=`<div class="empty-icon">⏳</div><h2>問題を作成しています…</h2>`;$("vocabQuiz").classList.add("hidden");$("vocabSummary").classList.add("hidden");
-    const data=await postJson("/api/vocabulary",{...commonSettings(),mode:$("vocabMode").value,count:Number($("vocabCount").value),recentWords:loadVocabHistory(),weakWords:getWeakWordsForReview()});
+    const data=await postJson("/api/vocabulary",{...commonSettings(),mode:$("vocabMode").value,count:Number($("vocabCount").value),recentWords:loadVocabHistory(),weakWords:getWeakWordsForReview(),masteredWords:getMasteredWords()});
     vocabSet=data.questions||[];if(!vocabSet.length)throw new Error("問題を生成できませんでした。");rememberVocabWords(vocabSet.map(q=>q.word));vocabIndex=0;vocabCorrect=0;vocabMistakes=[];vocabAnswered=false;$("vocabStart").classList.add("hidden");$("vocabQuiz").classList.remove("hidden");renderVocabQuestion();$("vocabQuiz").scrollIntoView({behavior:"smooth",block:"start"});
   }catch(e){$("vocabStart").classList.remove("hidden");$("vocabStart").innerHTML=`<div class="empty-icon">⚠️</div><h2>エラー</h2><p class="error">${escapeHtml(e.message)}</p>`;}finally{btn.disabled=false;}
 }
 
 function renderVocabQuestion(){
-  const q=vocabSet[vocabIndex],total=vocabSet.length,answerMode=$("vocabAnswerMode").value;vocabAnswered=false;$("vocabProgress").textContent=`${vocabIndex+1} / ${total}`;$("vocabRunningScore").textContent=`Score ${vocabCorrect}`;$("vocabBar").style.width=`${vocabIndex/total*100}%`;$("vocabPrompt").textContent=q.prompt;$("vocabContext").textContent="";$("vocabContext").classList.add("hidden");$("vocabFeedback").classList.add("hidden");$("vocabNextBtn").classList.add("hidden");$("vocabInputAnswer").value="";$("vocabInputAnswer").disabled=false;$("vocabInputSubmitBtn").disabled=false;
+  const q=vocabSet[vocabIndex],total=vocabSet.length,answerMode=$("vocabAnswerMode").value;vocabAnswered=false;$("vocabProgress").textContent=`${vocabIndex+1} / ${total}`;$("vocabRunningScore").textContent=`Score ${vocabCorrect}`;$("vocabBar").style.width=`${vocabIndex/total*100}%`;$("vocabPrompt").textContent=q.prompt;$("vocabContext").textContent="";$("vocabContext").classList.add("hidden");$("vocabFeedback").classList.add("hidden");$("vocabNextBtn").classList.add("hidden");$("vocabInputAnswer").value="";$("vocabInputAnswer").disabled=false;$("vocabInputSubmitBtn").disabled=false;$("vocabGiveUpBtn").disabled=false;
   if(answerMode==="choice"){
     $("vocabOptions").classList.remove("hidden");$("vocabInputArea").classList.add("hidden");$("vocabOptions").innerHTML=q.options.map((o,i)=>`<button class="option vocab-choice" data-index="${i}"><span><strong>${String.fromCharCode(65+i)}.</strong> ${escapeHtml(o)}</span></button>`).join("");document.querySelectorAll(".vocab-choice").forEach(b=>b.addEventListener("click",()=>answerVocabChoice(Number(b.dataset.index))));
   }else{
@@ -297,8 +386,21 @@ function renderVocabQuestion(){
 }
 
 function finishVocabAnswer({good,q,feedbackText="",acceptedAnswer=""}){
-  if(good)vocabCorrect++;else{vocabMistakes.push(q);addWeakWord(q.word,q.meaning_ja);}
-  const box=$("vocabFeedback");box.className=`feedback-box ${good?"good":"bad"}`;box.innerHTML=`<strong>${good?"✓ Correct!":"✕ Incorrect"}</strong><p><b>${escapeHtml(q.word||"")}</b>${q.meaning_ja?` — ${escapeHtml(q.meaning_ja)}`:""}</p>${q.context?`<div class="vocab-example"><strong>例文</strong><p>${escapeHtml(q.context)}</p></div>`:""}${feedbackText?`<p>${escapeHtml(feedbackText)}</p>`:""}${acceptedAnswer?`<p><strong>模範回答:</strong> ${escapeHtml(acceptedAnswer)}</p>`:""}`;box.classList.remove("hidden");$("vocabNextBtn").classList.remove("hidden");setTimeout(()=>$("vocabNextBtn").scrollIntoView({behavior:"smooth",block:"end"}),100);
+  let masteredNow=false;
+  if(good){
+    vocabCorrect++;
+    masteredNow=recordVocabCorrect(q.word,q.meaning_ja);
+  }else{
+    vocabMistakes.push(q);
+    addWeakWord(q.word,q.meaning_ja);
+  }
+
+  const box=$("vocabFeedback");
+  box.className=`feedback-box ${good?"good":"bad"}`;
+  box.innerHTML=`<strong>${good?"✓ Correct!":"✕ Incorrect"}</strong><p><b>${escapeHtml(q.word||"")}</b>${q.meaning_ja?` — ${escapeHtml(q.meaning_ja)}`:""}</p>${q.context?`<div class="vocab-example"><strong>例文</strong><p>${escapeHtml(q.context)}</p></div>`:""}${feedbackText?`<p>${escapeHtml(feedbackText)}</p>`:""}${acceptedAnswer?`<p><strong>模範回答:</strong> ${escapeHtml(acceptedAnswer)}</p>`:""}${masteredNow?`<p><strong>✓ 苦手卒業:</strong> 3回連続で正解したため、今後この単語は出題しません。</p>`:""}`;
+  box.classList.remove("hidden");
+  $("vocabNextBtn").classList.remove("hidden");
+  setTimeout(()=>$("vocabNextBtn").scrollIntoView({behavior:"smooth",block:"end"}),100);
 }
 
 function answerVocabChoice(selected){
@@ -307,9 +409,29 @@ function answerVocabChoice(selected){
 
 async function answerVocabInput(){
   if(vocabAnswered)return;const q=vocabSet[vocabIndex],userAnswer=$("vocabInputAnswer").value.trim();if(!userAnswer)return;const btn=$("vocabInputSubmitBtn");
-  try{btn.disabled=true;$("vocabInputAnswer").disabled=true;const result=await postJson("/api/vocabulary-check",{mode:$("vocabMode").value,prompt:q.prompt,context:q.context||"",word:q.word,meaning_ja:q.meaning_ja,userAnswer});vocabAnswered=true;finishVocabAnswer({good:Boolean(result.correct),q,feedbackText:result.feedback_ja||q.explanation_ja||"",acceptedAnswer:result.accepted_answer||""});}
-  catch(e){btn.disabled=false;$("vocabInputAnswer").disabled=false;const box=$("vocabFeedback");box.className="feedback-box bad";box.innerHTML=`<strong>判定エラー</strong><p>${escapeHtml(e.message)}</p>`;box.classList.remove("hidden");}
+  try{btn.disabled=true;$("vocabGiveUpBtn").disabled=true;$("vocabInputAnswer").disabled=true;const result=await postJson("/api/vocabulary-check",{mode:$("vocabMode").value,prompt:q.prompt,context:q.context||"",word:q.word,meaning_ja:q.meaning_ja,userAnswer});vocabAnswered=true;finishVocabAnswer({good:Boolean(result.correct),q,feedbackText:result.feedback_ja||q.explanation_ja||"",acceptedAnswer:result.accepted_answer||""});}
+  catch(e){btn.disabled=false;$("vocabGiveUpBtn").disabled=false;$("vocabInputAnswer").disabled=false;const box=$("vocabFeedback");box.className="feedback-box bad";box.innerHTML=`<strong>判定エラー</strong><p>${escapeHtml(e.message)}</p>`;box.classList.remove("hidden");}
 }
+
+function giveUpVocabInput(){
+  if(vocabAnswered)return;
+
+  const q=vocabSet[vocabIndex];
+  vocabAnswered=true;
+
+  $("vocabInputAnswer").disabled=true;
+  $("vocabInputSubmitBtn").disabled=true;
+  $("vocabGiveUpBtn").disabled=true;
+
+  finishVocabAnswer({
+    good:false,
+    q,
+    feedbackText:q.explanation_ja||"答えを確認して、次回もう一度思い出してみましょう。",
+    acceptedAnswer:$("vocabMode").value==="en-ja"?(q.meaning_ja||""):(q.word||"")
+  });
+}
+
+$("vocabGiveUpBtn").addEventListener("click",giveUpVocabInput);
 
 $("vocabInputSubmitBtn").addEventListener("click",answerVocabInput);$("vocabInputAnswer").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();answerVocabInput();}});
 $("vocabNextBtn").addEventListener("click",()=>{vocabIndex++;if(vocabIndex<vocabSet.length){renderVocabQuestion();setTimeout(()=>$("vocabQuiz").scrollIntoView({behavior:"smooth",block:"start"}),50);}else{finishVocab();setTimeout(()=>$("vocabSummary").scrollIntoView({behavior:"smooth",block:"start"}),50);}});
