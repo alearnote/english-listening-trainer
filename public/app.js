@@ -1,5 +1,10 @@
 const $ = id => document.getElementById(id);
 
+
+/* ================================
+   State
+================================ */
+
 let listening = null;
 let listeningAudioUrl = null;
 let listeningSpeed = 1;
@@ -12,27 +17,164 @@ let vocabMistakes = [];
 
 let reading = null;
 
-const STORAGE_KEY = "englishTrainerV2Progress";
+
+/* ================================
+   Storage keys
+================================ */
+
+const STORAGE_KEY =
+  "englishTrainerV2Progress";
+
 
 /*
-  Vocabularyで最近出題した単語を保存するためのキー
+  Vocabulary履歴
 */
 const VOCAB_HISTORY_KEY =
   "englishTrainerV2VocabHistory";
 
+const VOCAB_HISTORY_LIMIT =
+  200;
+
+
 /*
-  直近何語まで重複回避に使うか
+  Listening履歴
 */
-const VOCAB_HISTORY_LIMIT = 200;
+const LISTENING_HISTORY_KEY =
+  "englishTrainerV2ListeningHistory";
+
+const LISTENING_HISTORY_LIMIT =
+  20;
+
+
+/* ================================
+   Listening History
+================================ */
+
+/*
+  最近のListening問題を取得
+*/
+function loadListeningHistory() {
+  try {
+    const data =
+      JSON.parse(
+        localStorage.getItem(
+          LISTENING_HISTORY_KEY
+        ) || "[]"
+      );
+
+    if (!Array.isArray(data)) {
+      return [];
+    }
+
+    return data
+      .filter(Boolean)
+      .slice(
+        -LISTENING_HISTORY_LIMIT
+      );
+
+  } catch {
+    return [];
+  }
+}
+
+
+/*
+  Listening履歴を保存
+*/
+function saveListeningHistory(
+  history
+) {
+  const cleaned =
+    [];
+
+  const seen =
+    new Set();
+
+
+  for (
+    const raw of history
+  ) {
+    const sentence =
+      String(
+        raw ||
+        ""
+      ).trim();
+
+    if (!sentence) {
+      continue;
+    }
+
+    /*
+      完全に同じ英文は
+      履歴内で重複させない
+    */
+    const key =
+      sentence
+        .toLowerCase()
+        .replace(
+          /\s+/g,
+          " "
+        );
+
+    if (
+      seen.has(key)
+    ) {
+      continue;
+    }
+
+    seen.add(key);
+
+    cleaned.push(
+      sentence
+    );
+  }
+
+
+  localStorage.setItem(
+    LISTENING_HISTORY_KEY,
+    JSON.stringify(
+      cleaned.slice(
+        -LISTENING_HISTORY_LIMIT
+      )
+    )
+  );
+}
+
+
+/*
+  今回生成されたListening問題を
+  履歴へ追加
+*/
+function rememberListening(
+  sentence
+) {
+  const text =
+    String(
+      sentence ||
+      ""
+    ).trim();
+
+  if (!text) {
+    return;
+  }
+
+  const history =
+    loadListeningHistory();
+
+  history.push(
+    text
+  );
+
+  saveListeningHistory(
+    history
+  );
+}
 
 
 /* ================================
    Vocabulary History
 ================================ */
 
-/*
-  最近出題した単語履歴を読み込む
-*/
 function loadVocabHistory() {
   try {
     const data =
@@ -58,22 +200,33 @@ function loadVocabHistory() {
 }
 
 
-/*
-  Vocabulary履歴を保存
-*/
-function saveVocabHistory(words) {
-  const unique = [];
-  const seen = new Set();
+function saveVocabHistory(
+  words
+) {
+  const unique =
+    [];
 
-  for (const raw of words) {
+  const seen =
+    new Set();
+
+
+  for (
+    const raw of words
+  ) {
     const word =
-      String(raw || "")
-        .trim();
+      String(
+        raw ||
+        ""
+      ).trim();
 
-    if (!word) continue;
+    if (!word) {
+      continue;
+    }
+
 
     const key =
       word.toLowerCase();
+
 
     if (
       seen.has(key)
@@ -81,14 +234,15 @@ function saveVocabHistory(words) {
       continue;
     }
 
+
     seen.add(key);
 
-    unique.push(word);
+    unique.push(
+      word
+    );
   }
 
-  /*
-    最新200語のみ保存
-  */
+
   localStorage.setItem(
     VOCAB_HISTORY_KEY,
     JSON.stringify(
@@ -100,42 +254,44 @@ function saveVocabHistory(words) {
 }
 
 
-/*
-  今回出題した単語を
-  既存履歴へ追加
-*/
 function rememberVocabWords(
   words
 ) {
   const current =
     loadVocabHistory();
 
+
   const merged = [
     ...current,
     ...words
   ];
 
-  /*
-    大文字小文字を無視して
-    重複を削除
-  */
+
   const byLower =
     new Map();
+
 
   for (
     const raw of merged
   ) {
     const word =
-      String(raw || "")
-        .trim();
+      String(
+        raw ||
+        ""
+      ).trim();
 
-    if (!word) continue;
+
+    if (!word) {
+      continue;
+    }
+
 
     byLower.set(
       word.toLowerCase(),
       word
     );
   }
+
 
   saveVocabHistory(
     Array.from(
@@ -145,22 +301,22 @@ function rememberVocabWords(
 }
 
 
-/*
-  Progressに記録されている
-  苦手単語を取得
-*/
 function getWeakWordsForReview(
   limit = 40
 ) {
   return Object.values(
-    progress.weakWords || {}
+    progress.weakWords ||
+    {}
   )
     .sort(
       (a, b) =>
         (b.count || 0) -
         (a.count || 0)
     )
-    .slice(0, limit)
+    .slice(
+      0,
+      limit
+    )
     .map(
       w => ({
         word:
@@ -183,13 +339,19 @@ function getWeakWordsForReview(
 ================================ */
 
 function todayKey() {
-  const d = new Date();
+  const d =
+    new Date();
 
-  return `${d.getFullYear()}-${String(
-    d.getMonth() + 1
-  ).padStart(2, "0")}-${String(
-    d.getDate()
-  ).padStart(2, "0")}`;
+
+  return (
+    `${d.getFullYear()}-` +
+    `${String(
+      d.getMonth() + 1
+    ).padStart(2, "0")}-` +
+    `${String(
+      d.getDate()
+    ).padStart(2, "0")}`
+  );
 }
 
 
@@ -228,12 +390,14 @@ function loadProgress() {
         ) || "null"
       );
 
+
     if (
       !p ||
       p.date !== todayKey()
     ) {
       return blankProgress();
     }
+
 
     return {
       ...blankProgress(),
@@ -272,13 +436,18 @@ function addProgress(
   total = 0
 ) {
   progress[kind] =
-    (progress[kind] || 0) + 1;
+    (
+      progress[kind] ||
+      0
+    ) + 1;
+
 
   progress.correct +=
     correct;
 
   progress.total +=
     total;
+
 
   saveProgress();
 }
@@ -288,10 +457,14 @@ function addWeakWord(
   word,
   meaning = ""
 ) {
-  if (!word) return;
+  if (!word) {
+    return;
+  }
+
 
   const key =
     word.toLowerCase();
+
 
   const old =
     progress.weakWords[key] ||
@@ -301,15 +474,19 @@ function addWeakWord(
       count: 0
     };
 
+
   old.count += 1;
+
 
   if (meaning) {
     old.meaning =
       meaning;
   }
 
+
   progress.weakWords[key] =
     old;
+
 
   saveProgress();
 }
@@ -320,13 +497,16 @@ function renderProgress() {
     .textContent =
     progress.listening;
 
+
   $("statVocabulary")
     .textContent =
     progress.vocabulary;
 
+
   $("statReading")
     .textContent =
     progress.reading;
+
 
   $("todayTotal")
     .textContent =
@@ -334,15 +514,19 @@ function renderProgress() {
     progress.vocabulary +
     progress.reading;
 
+
   $("statAccuracy")
     .textContent =
     progress.total
-      ? `${Math.round(
-          progress.correct /
-          progress.total *
-          100
-        )}%`
+      ? `${
+          Math.round(
+            progress.correct /
+            progress.total *
+            100
+          )
+        }%`
       : "—";
+
 
   const words =
     Object.values(
@@ -353,15 +537,20 @@ function renderProgress() {
           b.count -
           a.count
       )
-      .slice(0, 30);
+      .slice(
+        0,
+        30
+      );
+
 
   $("weakWords")
     .innerHTML =
     words.length
       ? words
           .map(
-            w =>
-              `<span class="weak-word">
+            w => `
+              <span class="weak-word">
+
                 ${escapeHtml(
                   w.word
                 )}
@@ -375,12 +564,16 @@ function renderProgress() {
                 }
 
                 ×${w.count}
-              </span>`
+
+              </span>
+            `
           )
           .join("")
-      : `<span class="note">
+      : `
+        <span class="note">
           まだ記録はありません。
-        </span>`;
+        </span>
+      `;
 }
 
 
@@ -388,9 +581,12 @@ function renderProgress() {
    Common
 ================================ */
 
-function escapeHtml(s) {
+function escapeHtml(
+  s
+) {
   return String(
-    s ?? ""
+    s ??
+    ""
   )
     .replaceAll(
       "&",
@@ -434,8 +630,10 @@ async function postJson(
       }
     );
 
+
   const data =
     await r.json();
+
 
   if (!r.ok) {
     throw new Error(
@@ -444,11 +642,14 @@ async function postJson(
     );
   }
 
+
   return data;
 }
 
 
-function normalize(s) {
+function normalize(
+  s
+) {
   return String(s)
     .toLowerCase()
     .replace(
@@ -475,9 +676,11 @@ function wordLevenshtein(
     normalize(a)
       .split(" ");
 
+
   const B =
     normalize(b)
       .split(" ");
+
 
   const dp =
     Array.from(
@@ -491,21 +694,26 @@ function wordLevenshtein(
         ).fill(0)
     );
 
+
   for (
     let i = 0;
     i <= A.length;
     i++
   ) {
-    dp[i][0] = i;
+    dp[i][0] =
+      i;
   }
+
 
   for (
     let j = 0;
     j <= B.length;
     j++
   ) {
-    dp[0][j] = j;
+    dp[0][j] =
+      j;
   }
+
 
   for (
     let i = 1;
@@ -517,21 +725,23 @@ function wordLevenshtein(
       j <= B.length;
       j++
     ) {
-      const c =
+      const cost =
         A[i - 1] ===
         B[j - 1]
           ? 0
           : 1;
+
 
       dp[i][j] =
         Math.min(
           dp[i - 1][j] + 1,
           dp[i][j - 1] + 1,
           dp[i - 1][j - 1] +
-          c
+          cost
         );
     }
   }
+
 
   return {
     dist:
@@ -556,6 +766,7 @@ function dictationScore(
       correct,
       user
     );
+
 
   return Math.max(
     0,
@@ -608,6 +819,7 @@ document
                 )
             );
 
+
           document
             .querySelectorAll(
               ".tab-page"
@@ -619,9 +831,11 @@ document
                 )
             );
 
+
           btn.classList.add(
             "active"
           );
+
 
           $(
             `tab-${btn.dataset.tab}`
@@ -629,6 +843,7 @@ document
             .classList.remove(
               "hidden"
             );
+
 
           if (
             btn.dataset.tab ===
@@ -657,10 +872,12 @@ function clearListeningAudio() {
       null;
   }
 
+
   $("audio")
     .removeAttribute(
       "src"
     );
+
 
   $("audio")
     .load();
@@ -674,41 +891,51 @@ function resetListeningMode() {
   listeningMcqRevealed =
     false;
 
+
   clearListeningAudio();
+
 
   $("listeningResult")
     .classList.add(
       "hidden"
     );
 
+
   $("dictationAnswer")
     .value =
     "";
 
+
   $("dictationAnswer")
     .disabled =
     true;
+
 
   $("dictationCheckBtn")
     .disabled =
     true;
 
+
   $("playBtn")
     .disabled =
     true;
+
 
   $("listeningMcqPanel")
     .classList.add(
       "hidden"
     );
 
+
   $("listeningQuestions")
     .innerHTML =
     "";
 
+
   $("listeningMcqCheckBtn")
     .disabled =
     true;
+
 
   $("dictationPanel")
     .classList.toggle(
@@ -717,6 +944,7 @@ function resetListeningMode() {
         .value !==
         "dictation"
     );
+
 
   $("listeningStatus")
     .textContent =
@@ -739,21 +967,30 @@ $("newListeningBtn")
       const btn =
         $("newListeningBtn");
 
+
       try {
         btn.disabled =
           true;
 
+
         resetListeningMode();
+
 
         $("listeningStatus")
           .classList.remove(
             "error"
           );
 
+
         $("listeningStatus")
           .textContent =
           "AIが問題を作成しています…";
 
+
+        /*
+          新しいListening問題を作る際、
+          直近20問の英文もserver.jsへ送る
+        */
         listening =
           await postJson(
             "/api/listening",
@@ -766,42 +1003,72 @@ $("newListeningBtn")
 
               length:
                 $("listeningLength")
-                  .value
+                  .value,
+
+              recentListening:
+                loadListeningHistory()
             }
           );
+
+
+        if (
+          !listening ||
+          !listening.sentence
+        ) {
+          throw new Error(
+            "Listening問題を生成できませんでした。"
+          );
+        }
+
+
+        /*
+          生成された問題を
+          Listening履歴へ保存
+        */
+        rememberListening(
+          listening.sentence
+        );
+
 
         if (
           $("listeningMode")
             .value ===
           "dictation"
         ) {
+
           $("dictationPanel")
             .classList.remove(
               "hidden"
             );
 
+
           $("dictationAnswer")
             .disabled =
             false;
 
+
           $("dictationCheckBtn")
             .disabled =
             false;
+
 
           $("listeningStatus")
             .textContent =
             "準備できました。音声を再生してください。";
 
         } else {
+
           $("listeningMcqPanel")
             .classList.add(
               "hidden"
             );
 
+
           $("listeningStatus")
             .textContent =
             "準備できました。まず音声を最後まで聞いてください。";
         }
+
 
         $("playBtn")
           .disabled =
@@ -813,12 +1080,14 @@ $("newListeningBtn")
           .textContent =
           e.message;
 
+
         $("listeningStatus")
           .classList.add(
             "error"
           );
 
       } finally {
+
         btn.disabled =
           false;
       }
@@ -831,31 +1100,38 @@ async function playListening() {
     return;
   }
 
+
   const play =
     $("playBtn");
+
 
   const audio =
     $("audio");
 
+
   try {
     play.disabled =
       true;
+
 
     $("listeningStatus")
       .classList.remove(
         "error"
       );
 
+
     /*
       同じ問題では
-      音声APIを最初の1回だけ使用
+      TTS APIを最初の1回だけ利用
     */
     if (
       !listeningAudioUrl
     ) {
+
       $("listeningStatus")
         .textContent =
         "音声を準備しています…";
+
 
       const r =
         await fetch(
@@ -870,18 +1146,18 @@ async function playListening() {
             },
 
             body:
-              JSON.stringify(
-                {
-                  text:
-                    listening.sentence
-                }
-              )
+              JSON.stringify({
+                text:
+                  listening.sentence
+              })
           }
         );
+
 
       if (!r.ok) {
         let msg =
           "音声生成に失敗しました。";
+
 
         try {
           msg =
@@ -892,29 +1168,40 @@ async function playListening() {
 
         } catch {}
 
+
         throw new Error(
           msg
         );
       }
+
 
       listeningAudioUrl =
         URL.createObjectURL(
           await r.blob()
         );
 
+
       audio.src =
         listeningAudioUrl;
     }
 
+
     audio.playbackRate =
       listeningSpeed;
+
 
     audio.currentTime =
       0;
 
+
     audio.onended =
       () => {
 
+        /*
+          4択モードでは
+          音声が最後まで終わってから
+          問題を表示
+        */
         if (
           $("listeningMode")
             .value ===
@@ -924,15 +1211,19 @@ async function playListening() {
           if (
             !listeningMcqRevealed
           ) {
+
             renderListeningQuestions();
+
 
             $("listeningMcqPanel")
               .classList.remove(
                 "hidden"
               );
 
+
             listeningMcqRevealed =
               true;
+
 
             $("listeningMcqPanel")
               .scrollIntoView({
@@ -943,6 +1234,7 @@ async function playListening() {
                   "start"
               });
           }
+
 
           $("listeningStatus")
             .textContent =
@@ -956,7 +1248,9 @@ async function playListening() {
         }
       };
 
+
     await audio.play();
+
 
     $("listeningStatus")
       .textContent =
@@ -967,6 +1261,7 @@ async function playListening() {
     $("listeningStatus")
       .textContent =
       e.message;
+
 
     $("listeningStatus")
       .classList.add(
@@ -1016,9 +1311,11 @@ document
                 )
             );
 
+
           btn.classList.add(
             "active"
           );
+
 
           listeningSpeed =
             Number(
@@ -1046,13 +1343,14 @@ function renderListeningQuestions() {
       )
       .join("");
 
+
   document
     .querySelectorAll(
       'input[name^="lq"]'
     )
     .forEach(
-      x =>
-        x.addEventListener(
+      input =>
+        input.addEventListener(
           "change",
           () => {
 
@@ -1090,31 +1388,35 @@ function questionHtml(
 
       <div class="option-list">
 
-        ${q.options
-          .map(
-            (o, j) => `
-              <label class="option">
+        ${
+          q.options
+            .map(
+              (option, j) => `
+                <label class="option">
 
-                <input
-                  type="radio"
-                  name="${prefix}${i}"
-                  value="${j}"
-                >
+                  <input
+                    type="radio"
+                    name="${prefix}${i}"
+                    value="${j}"
+                  >
 
-                <span>
-                  <strong>
-                    ${String.fromCharCode(
-                      65 + j
-                    )}.
-                  </strong>
+                  <span>
+                    <strong>
+                      ${String.fromCharCode(
+                        65 + j
+                      )}.
+                    </strong>
 
-                  ${escapeHtml(o)}
-                </span>
+                    ${escapeHtml(
+                      option
+                    )}
+                  </span>
 
-              </label>
-            `
-          )
-          .join("")}
+                </label>
+              `
+            )
+            .join("")
+        }
 
       </div>
 
@@ -1137,10 +1439,12 @@ $("dictationCheckBtn")
         return;
       }
 
+
       const user =
         $("dictationAnswer")
           .value
           .trim();
+
 
       const score =
         dictationScore(
@@ -1148,13 +1452,16 @@ $("dictationCheckBtn")
           user
         );
 
+
       $("listeningScore")
         .textContent =
         `${score}%`;
 
+
       $("listeningScoreLabel")
         .textContent =
         "Dictation score";
+
 
       $("listeningScoreMsg")
         .textContent =
@@ -1166,34 +1473,42 @@ $("dictationCheckBtn")
           ? "あと少しです。"
           : "正解を確認して聞き直しましょう。";
 
+
       $("dictationYourAnswer")
         .classList.remove(
           "hidden"
         );
 
+
       $("dictationYourAnswerText")
         .textContent =
         user;
+
 
       $("listeningReview")
         .classList.add(
           "hidden"
         );
 
+
       $("listeningCoach")
         .classList.remove(
           "hidden"
         );
 
+
       showListeningBase();
+
 
       $("listeningFeedback")
         .textContent =
         "AIが解説を生成しています…";
 
+
       $("listeningFocus")
         .innerHTML =
         "";
+
 
       addProgress(
         "listening",
@@ -1203,13 +1518,15 @@ $("dictationCheckBtn")
         1
       );
 
+
       $("dictationCheckBtn")
         .disabled =
         true;
 
+
       try {
 
-        const ex =
+        const explanation =
           await postJson(
             "/api/explain",
             {
@@ -1221,23 +1538,26 @@ $("dictationCheckBtn")
             }
           );
 
+
         $("listeningFeedback")
           .textContent =
-          ex.feedback;
+          explanation.feedback;
+
 
         $("listeningFocus")
           .innerHTML =
           (
-            ex.focus ||
+            explanation.focus ||
             []
           )
             .map(
-              x =>
-                `<li>
+              item => `
+                <li>
                   ${escapeHtml(
-                    x
+                    item
                   )}
-                </li>`
+                </li>
+              `
             )
             .join("");
 
@@ -1256,7 +1576,9 @@ $("listeningMcqCheckBtn")
     "click",
     () => {
 
-      let c = 0;
+      let correctCount =
+        0;
+
 
       const html =
         (
@@ -1271,41 +1593,50 @@ $("listeningMcqCheckBtn")
                   `input[name="lq${i}"]:checked`
                 );
 
+
               if (!selected) {
                 return "";
               }
 
-              const s =
+
+              const selectedIndex =
                 Number(
                   selected.value
                 );
 
-              const a =
+
+              const answerIndex =
                 Number(
                   q.answer_index
                 );
 
+
               if (
-                s === a
+                selectedIndex ===
+                answerIndex
               ) {
-                c++;
+                correctCount++;
               }
+
 
               return `
                 <div class="
                   review-card
                   ${
-                    s === a
+                    selectedIndex ===
+                    answerIndex
                       ? "review-correct"
                       : "review-wrong"
                   }
                 ">
 
                   <div class="question-title">
+
                     Q${i + 1}.
                     ${escapeHtml(
                       q.question
                     )}
+
                   </div>
 
                   <p>
@@ -1314,11 +1645,14 @@ $("listeningMcqCheckBtn")
                     </strong>
 
                     ${String.fromCharCode(
-                      65 + s
+                      65 +
+                      selectedIndex
                     )}.
 
                     ${escapeHtml(
-                      q.options[s]
+                      q.options[
+                        selectedIndex
+                      ]
                     )}
                   </p>
 
@@ -1328,11 +1662,14 @@ $("listeningMcqCheckBtn")
                     </strong>
 
                     ${String.fromCharCode(
-                      65 + a
+                      65 +
+                      answerIndex
                     )}.
 
                     ${escapeHtml(
-                      q.options[a]
+                      q.options[
+                        answerIndex
+                      ]
                     )}
                   </p>
 
@@ -1349,69 +1686,82 @@ $("listeningMcqCheckBtn")
           )
           .join("");
 
+
       const total =
         (
           listening.questions ||
           []
         ).length;
 
+
       $("listeningScore")
         .textContent =
-        `${c}/${total}`;
+        `${correctCount}/${total}`;
+
 
       $("listeningScoreLabel")
         .textContent =
         "Comprehension score";
 
+
       $("listeningScoreMsg")
         .textContent =
-        c === total
+        correctCount === total
           ? "Excellent!"
-          : c >=
+          : correctCount >=
             Math.ceil(
-              total * 0.67
+              total *
+              0.67
             )
           ? "Good! もう一度聞くとさらに定着します。"
           : "スクリプトを確認して聞き直しましょう。";
+
 
       $("dictationYourAnswer")
         .classList.add(
           "hidden"
         );
 
+
       $("listeningReview")
         .innerHTML =
         html;
+
 
       $("listeningReview")
         .classList.remove(
           "hidden"
         );
 
+
       $("listeningCoach")
         .classList.add(
           "hidden"
         );
 
+
       showListeningBase();
+
 
       addProgress(
         "listening",
-        c,
+        correctCount,
         total
       );
+
 
       $("listeningMcqCheckBtn")
         .disabled =
         true;
+
 
       $("listeningQuestions")
         .querySelectorAll(
           "input"
         )
         .forEach(
-          x =>
-            x.disabled =
+          input =>
+            input.disabled =
               true
         );
     }
@@ -1423,19 +1773,23 @@ function showListeningBase() {
     .textContent =
     listening.sentence;
 
+
   $("listeningTranslation")
     .textContent =
     listening.translation;
+
 
   $("listeningTip")
     .textContent =
     listening.listening_tip ||
     "";
 
+
   $("listeningResult")
     .classList.remove(
       "hidden"
     );
+
 
   $("listeningResult")
     .scrollIntoView({
@@ -1494,14 +1848,17 @@ async function generateVocab() {
   const btn =
     $("newVocabBtn");
 
+
   try {
     btn.disabled =
       true;
+
 
     $("vocabStart")
       .classList.remove(
         "hidden"
       );
+
 
     $("vocabStart")
       .innerHTML = `
@@ -1514,22 +1871,19 @@ async function generateVocab() {
         </h2>
       `;
 
+
     $("vocabQuiz")
       .classList.add(
         "hidden"
       );
+
 
     $("vocabSummary")
       .classList.add(
         "hidden"
       );
 
-    /*
-      ここで
-      ・直近200語
-      ・苦手単語
-      をserver.jsへ送る
-    */
+
     const data =
       await postJson(
         "/api/vocabulary",
@@ -1554,9 +1908,11 @@ async function generateVocab() {
         }
       );
 
+
     vocabSet =
       data.questions ||
       [];
+
 
     if (
       !vocabSet.length
@@ -1566,15 +1922,14 @@ async function generateVocab() {
       );
     }
 
-    /*
-      今回出題された単語を
-      履歴に記録する
-    */
+
     rememberVocabWords(
       vocabSet.map(
-        q => q.word
+        q =>
+          q.word
       )
     );
+
 
     vocabIndex =
       0;
@@ -1585,17 +1940,21 @@ async function generateVocab() {
     vocabMistakes =
       [];
 
+
     $("vocabStart")
       .classList.add(
         "hidden"
       );
+
 
     $("vocabQuiz")
       .classList.remove(
         "hidden"
       );
 
+
     renderVocabQuestion();
+
 
     $("vocabQuiz")
       .scrollIntoView({
@@ -1612,6 +1971,7 @@ async function generateVocab() {
       .classList.remove(
         "hidden"
       );
+
 
     $("vocabStart")
       .innerHTML = `
@@ -1640,35 +2000,44 @@ async function generateVocab() {
 
 function renderVocabQuestion() {
   const q =
-    vocabSet[vocabIndex];
+    vocabSet[
+      vocabIndex
+    ];
 
-  const n =
+
+  const total =
     vocabSet.length;
+
 
   $("vocabProgress")
     .textContent =
-    `${vocabIndex + 1} / ${n}`;
+    `${vocabIndex + 1} / ${total}`;
+
 
   $("vocabRunningScore")
     .textContent =
     `Score ${vocabCorrect}`;
 
+
   $("vocabBar")
     .style.width =
     `${
       vocabIndex /
-      n *
+      total *
       100
     }%`;
+
 
   $("vocabPrompt")
     .textContent =
     q.prompt;
 
+
   $("vocabContext")
     .textContent =
     q.context ||
     "";
+
 
   $("vocabContext")
     .classList.toggle(
@@ -1676,27 +2045,31 @@ function renderVocabQuestion() {
       !q.context
     );
 
+
   $("vocabFeedback")
     .classList.add(
       "hidden"
     );
+
 
   $("vocabNextBtn")
     .classList.add(
       "hidden"
     );
 
+
   $("vocabOptions")
     .innerHTML =
     q.options
       .map(
-        (o, i) => `
+        (option, i) => `
           <button
             class="option vocab-choice"
             data-index="${i}"
           >
 
             <span>
+
               <strong>
                 ${String.fromCharCode(
                   65 + i
@@ -1704,8 +2077,9 @@ function renderVocabQuestion() {
               </strong>
 
               ${escapeHtml(
-                o
+                option
               )}
+
             </span>
 
           </button>
@@ -1713,18 +2087,19 @@ function renderVocabQuestion() {
       )
       .join("");
 
+
   document
     .querySelectorAll(
       ".vocab-choice"
     )
     .forEach(
-      b =>
-        b.addEventListener(
+      button =>
+        button.addEventListener(
           "click",
           () =>
             answerVocab(
               Number(
-                b.dataset.index
+                button.dataset.index
               )
             )
         )
@@ -1732,23 +2107,25 @@ function renderVocabQuestion() {
 }
 
 
-/*
-  Vocabulary回答
-*/
 function answerVocab(
   selected
 ) {
   const q =
-    vocabSet[vocabIndex];
+    vocabSet[
+      vocabIndex
+    ];
+
 
   const correct =
     Number(
       q.answer_index
     );
 
+
   const good =
     selected ===
     correct;
+
 
   if (good) {
 
@@ -1760,10 +2137,7 @@ function answerVocab(
       q
     );
 
-    /*
-      間違えた単語は
-      苦手単語として記録
-    */
+
     addWeakWord(
       q.word,
       q.meaning_ja
@@ -1771,38 +2145,31 @@ function answerVocab(
   }
 
 
-  /*
-    回答後は選択肢を無効化
-  */
   document
     .querySelectorAll(
       ".vocab-choice"
     )
     .forEach(
-      (b, i) => {
+      (button, i) => {
 
-        b.disabled =
+        button.disabled =
           true;
 
-        /*
-          正解
-        */
+
         if (
           i === correct
         ) {
-          b.classList.add(
+          button.classList.add(
             "correct-choice"
           );
         }
 
-        /*
-          自分が選んだ不正解
-        */
+
         if (
           i === selected &&
           !good
         ) {
-          b.classList.add(
+          button.classList.add(
             "wrong-choice"
           );
         }
@@ -1810,11 +2177,9 @@ function answerVocab(
     );
 
 
-  /*
-    正誤・解説表示
-  */
   const box =
     $("vocabFeedback");
+
 
   box.className =
     `feedback-box ${
@@ -1822,6 +2187,7 @@ function answerVocab(
         ? "good"
         : "bad"
     }`;
+
 
   box.innerHTML = `
     <strong>
@@ -1833,6 +2199,7 @@ function answerVocab(
     </strong>
 
     <p>
+
       <b>
         ${escapeHtml(
           q.word ||
@@ -1847,6 +2214,7 @@ function answerVocab(
             )}`
           : ""
       }
+
     </p>
 
     <p>
@@ -1857,14 +2225,12 @@ function answerVocab(
     </p>
   `;
 
+
   box.classList.remove(
     "hidden"
   );
 
 
-  /*
-    次の問題ボタンを表示
-  */
   $("vocabNextBtn")
     .classList.remove(
       "hidden"
@@ -1872,9 +2238,8 @@ function answerVocab(
 
 
   /*
-    次の問題ボタンが
-    スマホ画面の下側に
-    見える位置まで移動
+    スマホで次の問題ボタンが
+    見える位置まで自動スクロール
   */
   setTimeout(
     () => {
@@ -1894,15 +2259,13 @@ function answerVocab(
 }
 
 
-/*
-  「次の問題」
-*/
 $("vocabNextBtn")
   .addEventListener(
     "click",
     () => {
 
       vocabIndex++;
+
 
       if (
         vocabIndex <
@@ -1911,9 +2274,7 @@ $("vocabNextBtn")
 
         renderVocabQuestion();
 
-        /*
-          次問の先頭へ移動
-        */
+
         setTimeout(
           () => {
 
@@ -1932,10 +2293,8 @@ $("vocabNextBtn")
 
       } else {
 
-        /*
-          全問終了
-        */
         finishVocab();
+
 
         setTimeout(
           () => {
@@ -1963,14 +2322,17 @@ function finishVocab() {
       "hidden"
     );
 
+
   $("vocabSummary")
     .classList.remove(
       "hidden"
     );
 
+
   $("vocabFinalScore")
     .textContent =
     `${vocabCorrect}/${vocabSet.length}`;
+
 
   $("vocabSummaryMsg")
     .textContent =
@@ -1983,6 +2345,7 @@ function finishVocab() {
       ? "Great job!"
       : "間違えた単語をもう一度確認しましょう。";
 
+
   $("vocabReview")
     .innerHTML =
     vocabMistakes.length
@@ -1991,35 +2354,37 @@ function finishVocab() {
           REVIEW
         </div>
 
-        ${vocabMistakes
-          .map(
-            q => `
-              <div class="review-card">
+        ${
+          vocabMistakes
+            .map(
+              q => `
+                <div class="review-card">
 
-                <strong>
+                  <strong>
+                    ${escapeHtml(
+                      q.word
+                    )}
+                  </strong>
+
+                  —
+
                   ${escapeHtml(
-                    q.word
-                  )}
-                </strong>
-
-                —
-
-                ${escapeHtml(
-                  q.meaning_ja ||
-                  ""
-                )}
-
-                <p>
-                  ${escapeHtml(
-                    q.explanation_ja ||
+                    q.meaning_ja ||
                     ""
                   )}
-                </p>
 
-              </div>
-            `
-          )
-          .join("")}
+                  <p>
+                    ${escapeHtml(
+                      q.explanation_ja ||
+                      ""
+                    )}
+                  </p>
+
+                </div>
+              `
+            )
+            .join("")
+        }
       `
       : `
         <div class="
@@ -2033,17 +2398,19 @@ function finishVocab() {
 
   /*
     Vocabularyは
-    「セット数」ではなく
-    問題数を記録
+    問題数でProgressへ記録
   */
   progress.vocabulary +=
     vocabSet.length;
 
+
   progress.correct +=
     vocabCorrect;
 
+
   progress.total +=
     vocabSet.length;
+
 
   saveProgress();
 }
@@ -2071,15 +2438,17 @@ async function generateReading() {
   const btn =
     $("newReadingBtn");
 
-  try {
 
+  try {
     btn.disabled =
       true;
+
 
     $("readingStart")
       .classList.remove(
         "hidden"
       );
+
 
     $("readingStart")
       .innerHTML = `
@@ -2092,15 +2461,18 @@ async function generateReading() {
         </h2>
       `;
 
+
     $("readingQuiz")
       .classList.add(
         "hidden"
       );
 
+
     $("readingResult")
       .classList.add(
         "hidden"
       );
+
 
     reading =
       await postJson(
@@ -2120,9 +2492,11 @@ async function generateReading() {
         }
       );
 
+
     $("readingPassage")
       .textContent =
       reading.passage;
+
 
     $("readingQuestions")
       .innerHTML =
@@ -2140,13 +2514,14 @@ async function generateReading() {
         )
         .join("");
 
+
     document
       .querySelectorAll(
         'input[name^="rq"]'
       )
       .forEach(
-        x =>
-          x.addEventListener(
+        input =>
+          input.addEventListener(
             "change",
             () => {
 
@@ -2165,19 +2540,32 @@ async function generateReading() {
           )
       );
 
+
     $("readingCheckBtn")
       .disabled =
       true;
+
 
     $("readingStart")
       .classList.add(
         "hidden"
       );
 
+
     $("readingQuiz")
       .classList.remove(
         "hidden"
       );
+
+
+    $("readingQuiz")
+      .scrollIntoView({
+        behavior:
+          "smooth",
+
+        block:
+          "start"
+      });
 
   } catch (e) {
 
@@ -2185,6 +2573,7 @@ async function generateReading() {
       .classList.remove(
         "hidden"
       );
+
 
     $("readingStart")
       .innerHTML = `
@@ -2216,11 +2605,14 @@ $("readingCheckBtn")
     "click",
     () => {
 
-      let c = 0;
+      let correctCount =
+        0;
+
 
       const questions =
         reading.questions ||
         [];
+
 
       const review =
         questions
@@ -2232,41 +2624,50 @@ $("readingCheckBtn")
                   `input[name="rq${i}"]:checked`
                 );
 
+
               if (!selected) {
                 return "";
               }
 
-              const s =
+
+              const selectedIndex =
                 Number(
                   selected.value
                 );
 
-              const a =
+
+              const answerIndex =
                 Number(
                   q.answer_index
                 );
 
+
               if (
-                s === a
+                selectedIndex ===
+                answerIndex
               ) {
-                c++;
+                correctCount++;
               }
+
 
               return `
                 <div class="
                   review-card
                   ${
-                    s === a
+                    selectedIndex ===
+                    answerIndex
                       ? "review-correct"
                       : "review-wrong"
                   }
                 ">
 
                   <div class="question-title">
+
                     Q${i + 1}.
                     ${escapeHtml(
                       q.question
                     )}
+
                   </div>
 
                   <p>
@@ -2275,11 +2676,14 @@ $("readingCheckBtn")
                     </strong>
 
                     ${String.fromCharCode(
-                      65 + s
+                      65 +
+                      selectedIndex
                     )}.
 
                     ${escapeHtml(
-                      q.options[s]
+                      q.options[
+                        selectedIndex
+                      ]
                     )}
                   </p>
 
@@ -2289,11 +2693,14 @@ $("readingCheckBtn")
                     </strong>
 
                     ${String.fromCharCode(
-                      65 + a
+                      65 +
+                      answerIndex
                     )}.
 
                     ${escapeHtml(
-                      q.options[a]
+                      q.options[
+                        answerIndex
+                      ]
                     )}
                   </p>
 
@@ -2310,28 +2717,33 @@ $("readingCheckBtn")
           )
           .join("");
 
+
       $("readingScore")
         .textContent =
-        `${c}/${questions.length}`;
+        `${correctCount}/${questions.length}`;
+
 
       $("readingScoreMsg")
         .textContent =
-        c ===
+        correctCount ===
         questions.length
           ? "Excellent!"
-          : c /
+          : correctCount /
               questions.length >=
             0.7
           ? "よく読めています。"
           : "解説と日本語訳を確認して読み直しましょう。";
 
+
       $("readingReview")
         .innerHTML =
         review;
 
+
       $("readingTranslation")
         .textContent =
         reading.translation;
+
 
       $("readingVocabulary")
         .innerHTML =
@@ -2340,17 +2752,17 @@ $("readingCheckBtn")
           []
         )
           .map(
-            v => `
+            vocab => `
               <span class="vocab-chip">
 
                 ${escapeHtml(
-                  v.word
+                  vocab.word
                 )}
 
                 —
 
                 ${escapeHtml(
-                  v.meaning_ja
+                  vocab.meaning_ja
                 )}
 
               </span>
@@ -2358,10 +2770,12 @@ $("readingCheckBtn")
           )
           .join("");
 
+
       $("readingResult")
         .classList.remove(
           "hidden"
         );
+
 
       $("readingResult")
         .scrollIntoView({
@@ -2372,23 +2786,26 @@ $("readingCheckBtn")
             "start"
         });
 
+
       $("readingCheckBtn")
         .disabled =
         true;
+
 
       $("readingQuestions")
         .querySelectorAll(
           "input"
         )
         .forEach(
-          x =>
-            x.disabled =
+          input =>
+            input.disabled =
               true
         );
 
+
       addProgress(
         "reading",
-        c,
+        correctCount,
         questions.length
       );
     }
@@ -2412,6 +2829,7 @@ $("clearProgressBtn")
 
         progress =
           blankProgress();
+
 
         saveProgress();
       }
