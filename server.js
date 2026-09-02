@@ -61,8 +61,31 @@ app.post("/api/vocabulary",requireKey,async(req,res)=>{try{
 
 app.post("/api/vocabulary-check",requireKey,async(req,res)=>{try{
   const mode=String(req.body.mode||""),prompt=String(req.body.prompt||""),context=String(req.body.context||""),word=String(req.body.word||""),meaningJa=String(req.body.meaning_ja||""),userAnswer=String(req.body.userAnswer||"").trim();if(!["en-ja","ja-en","blank"].includes(mode))return res.status(400).json({error:"Vocabularyの出題形式が不正です。"});if(!userAnswer)return res.status(400).json({error:"回答が入力されていません。"});
-  const rule=mode==="en-ja"?`Learner saw English and answered in Japanese. Accept natural Japanese synonyms/paraphrases with the same meaning.`:mode==="ja-en"?`Learner saw Japanese and answered in English. Accept genuinely equivalent English answers. Minor spelling errors may be accepted only if intention is unmistakable and no different word is created.`:`Learner filled an English sentence blank. Accept an alternative only if it fits this exact sentence naturally, grammatically and semantically.`;
-  const p=`Grade one vocabulary answer. Mode: ${mode}. Prompt: ${prompt}. Context: ${context||"(none)"}. Target English: ${word}. Target Japanese meaning: ${meaningJa}. Learner answer: ${userAnswer}. ${rule} Be fair but not over-generous. Return ONLY JSON {"correct":true,"score":100,"feedback_ja":"short Japanese feedback","accepted_answer":"best standard answer"}. score integer 0-100; >=80 means correct, <80 incorrect; no markdown.`;
+  const rule=mode==="en-ja"?`
+The learner saw an English word or phrase and answered in Japanese.
+
+Judge ONLY whether the learner's Japanese answer is a legitimate dictionary meaning
+or natural Japanese translation of the target English word or phrase.
+
+IMPORTANT:
+- Ignore the example sentence and Context completely.
+- Do not require the meaning used in the example sentence.
+- If the learner gives ANY common, established dictionary meaning of the target word or phrase, mark it correct.
+- Accept natural Japanese synonyms and paraphrases.
+- Reject only meanings that are genuinely not meanings of the target word or phrase.
+`:mode==="ja-en"?`
+The learner saw a Japanese meaning and answered in English.
+
+Judge ONLY whether the English answer is a legitimate translation of the displayed Japanese prompt.
+
+IMPORTANT:
+- Ignore the example sentence and Context completely.
+- Accept genuinely equivalent English words or phrases.
+- Minor spelling errors may be accepted only if the intended word is unmistakable and no different word is created.
+`:`The learner filled an English sentence blank. For blank mode only, use the sentence context. Accept an alternative only if it fits this exact sentence naturally, grammatically and semantically.`;
+
+  const gradingContext=(mode==="blank")?(context||"(none)"):"(IGNORE CONTEXT FOR THIS MODE)";
+  const p=`Grade one vocabulary answer. Mode: ${mode}. Prompt: ${prompt}. Context: ${gradingContext}. Target English: ${word}. Target Japanese meaning: ${meaningJa}. Learner answer: ${userAnswer}. ${rule} Be fair but not over-generous. For en-ja, a valid dictionary meaning must be marked correct even if it differs from the meaning suggested by the later example sentence. For ja-en, judge only the displayed Japanese meaning. Only blank mode is context-sensitive. Return ONLY JSON {"correct":true,"score":100,"feedback_ja":"short Japanese feedback","accepted_answer":"best standard answer"}. score integer 0-100; >=80 means correct, <80 incorrect; no markdown.`;
   const d=await generateJson(p);const score=Math.max(0,Math.min(100,Math.round(Number(d.score)||0)));res.json({correct:score>=80,score,feedback_ja:String(d.feedback_ja||""),accepted_answer:String(d.accepted_answer||(mode==="en-ja"?meaningJa:word))});
 }catch(e){console.error(e);res.status(500).json({error:e.message||"回答判定に失敗しました。"});}});
 
