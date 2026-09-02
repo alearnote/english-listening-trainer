@@ -4563,6 +4563,16 @@ const VOCAB_POOLS = {
   ]
 };
 
+function answerIndexSafe(q){
+  return answerIndex(q);
+}
+function looksJapaneseOption(t){
+  return looksJapanese(t);
+}
+function looksEnglishOption(t){
+  return looksEnglish(t);
+}
+
 app.post("/api/vocabulary",requireKey,async(req,res)=>{try{
   const level=String(req.body.level||"B1");
   const topic=String(req.body.topic||"Daily conversation");
@@ -4748,7 +4758,7 @@ Rules:
     const meaningJa=String(raw.meaning_ja||"").trim();
     const explanationJa=String(raw.explanation_ja||"").trim();
     const options=Array.isArray(raw.options)?raw.options.map(x=>String(x||"").trim()):[];
-    const answerIndex=clampAnswerIndex(raw);
+    const answerIndex=answerIndexSafe(raw);
 
     if(options.length!==4||options.some(x=>!x)||new Set(options.map(x=>x.toLowerCase())).size!==4||answerIndex===null){
       return null;
