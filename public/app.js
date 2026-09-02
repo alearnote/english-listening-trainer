@@ -13,7 +13,7 @@ let reading = null;
 
 const STORAGE_KEY = "englishTrainerV2Progress";
 const VOCAB_HISTORY_KEY = "englishTrainerV2VocabHistory";
-const VOCAB_HISTORY_LIMIT = 200;
+const VOCAB_HISTORY_LIMIT = 1000;
 const LISTENING_HISTORY_KEY = "englishTrainerV2ListeningHistory";
 const LISTENING_HISTORY_LIMIT = 20;
 const VOCAB_MASTERY_KEY = "englishTrainerV3VocabMastery";
