@@ -325,7 +325,7 @@ async function playListening() {
 }
 
 $("playBtn").addEventListener("click", playListening);
-$("replayBtn").addEventListener("click", playListening);
+
 document.querySelectorAll(".speed").forEach(btn=>btn.addEventListener("click",()=>{document.querySelectorAll(".speed").forEach(x=>x.classList.remove("active"));btn.classList.add("active");listeningSpeed=Number(btn.dataset.speed);}));
 
 function questionHtml(q,i,prefix){return `<div class="question-card"><div class="question-title">Q${i+1}. ${escapeHtml(q.question)}</div><div class="option-list">${q.options.map((o,j)=>`<label class="option"><input type="radio" name="${prefix}${i}" value="${j}"><span><strong>${String.fromCharCode(65+j)}.</strong> ${escapeHtml(o)}</span></label>`).join("")}</div></div>`;}
