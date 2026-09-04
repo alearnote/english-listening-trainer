@@ -10,6 +10,11 @@ let vocabCorrect = 0;
 let vocabMistakes = [];
 let vocabAnswered = false;
 let reading = null;
+let writingSet = [];
+let writingIndex = 0;
+let writingCorrect = 0;
+let writingMistakes = [];
+let writingAnswered = false;
 
 const STORAGE_KEY = "englishTrainerV2Progress";
 const VOCAB_HISTORY_KEY = "englishTrainerV2VocabHistory";
@@ -83,7 +88,7 @@ function todayKey() {
 }
 
 function blankProgress() {
-  return { date: todayKey(), listening: 0, vocabulary: 0, reading: 0, correct: 0, total: 0, weakWords: {} };
+  return { date: todayKey(), listening: 0, vocabulary: 0, writing: 0, reading: 0, correct: 0, total: 0, weakWords: {} };
 }
 
 function loadProgress() {
@@ -95,6 +100,7 @@ function loadProgress() {
 }
 
 let progress = loadProgress();
+if (typeof progress.writing !== "number") progress.writing = 0;
 
 function saveProgress() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
@@ -216,8 +222,9 @@ function getMasteredWords(limit = 500) {
 function renderProgress() {
   $("statListening").textContent = progress.listening;
   $("statVocabulary").textContent = progress.vocabulary;
+  $("statWriting").textContent = progress.writing || 0;
   $("statReading").textContent = progress.reading;
-  $("todayTotal").textContent = progress.listening + progress.vocabulary + progress.reading;
+  $("todayTotal").textContent = progress.listening + progress.vocabulary + (progress.writing || 0) + progress.reading;
   $("statAccuracy").textContent = progress.total ? `${Math.round(progress.correct/progress.total*100)}%` : "—";
   const words = Object.values(progress.weakWords).sort((a,b)=>b.count-a.count).slice(0,30);
   $("weakWords").innerHTML = words.length
@@ -492,6 +499,176 @@ $("vocabNextBtn").addEventListener("click",()=>{vocabIndex++;if(vocabIndex<vocab
 function finishVocab(){
   $("vocabQuiz").classList.add("hidden");$("vocabSummary").classList.remove("hidden");$("vocabFinalScore").textContent=`${vocabCorrect}/${vocabSet.length}`;$("vocabSummaryMsg").textContent=vocabCorrect===vocabSet.length?"Perfect!":vocabCorrect/vocabSet.length>=.8?"Great job!":"間違えた単語をもう一度確認しましょう。";$("vocabReview").innerHTML=vocabMistakes.length?`<h3>Review</h3>${vocabMistakes.map(q=>`<div class="review-card"><strong>${escapeHtml(q.word)}</strong> — ${escapeHtml(q.meaning_ja||"")}<p>${escapeHtml(q.explanation_ja||"")}</p></div>`).join("")}`:`<div class="review-card review-correct">全問正解です！</div>`;progress.vocabulary+=vocabSet.length;progress.correct+=vocabCorrect;progress.total+=vocabSet.length;saveProgress();
 }
+
+
+/* Writing: Japanese -> English */
+$("newWritingBtn").addEventListener("click", generateWriting);
+$("writingAgainBtn").addEventListener("click", generateWriting);
+
+async function generateWriting(){
+  const btn = $("newWritingBtn");
+  try{
+    btn.disabled = true;
+    $("writingStart").classList.remove("hidden");
+    $("writingStart").innerHTML = `<div class="empty-icon">⏳</div><h2>英作文問題を作成しています…</h2>`;
+    $("writingQuiz").classList.add("hidden");
+    $("writingSummary").classList.add("hidden");
+
+    const count = Number($("writingCount").value) || 5;
+    const data = await postJson("/api/writing", {...commonSettings(), count});
+    writingSet = Array.isArray(data.questions) ? data.questions : [];
+    if(!writingSet.length) throw new Error("英作文問題を生成できませんでした。");
+
+    writingIndex = 0;
+    writingCorrect = 0;
+    writingMistakes = [];
+    $("writingStart").classList.add("hidden");
+    $("writingQuiz").classList.remove("hidden");
+    renderWritingQuestion();
+    $("writingQuiz").scrollIntoView({behavior:"smooth", block:"start"});
+  }catch(e){
+    $("writingStart").classList.remove("hidden");
+    $("writingStart").innerHTML = `<div class="empty-icon">⚠️</div><h2>エラー</h2><p class="error">${escapeHtml(e.message)}</p>`;
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+function renderWritingQuestion(){
+  const q = writingSet[writingIndex];
+  const total = writingSet.length;
+  writingAnswered = false;
+  $("writingProgress").textContent = `${writingIndex + 1} / ${total}`;
+  $("writingRunningScore").textContent = `Score ${writingCorrect}`;
+  $("writingBar").style.width = `${writingIndex / total * 100}%`;
+  $("writingPrompt").textContent = q.japanese;
+  $("writingAnswer").value = "";
+  $("writingAnswer").disabled = false;
+  $("writingSubmitBtn").disabled = false;
+  $("writingGiveUpBtn").disabled = false;
+  $("writingFeedback").classList.add("hidden");
+  $("writingNextBtn").classList.add("hidden");
+  setTimeout(() => $("writingAnswer").focus(), 50);
+}
+
+function finishWritingAnswer({good, result=null, gaveUp=false}){
+  const q = writingSet[writingIndex];
+  writingAnswered = true;
+
+  if(good) writingCorrect++;
+  else writingMistakes.push({q, result, gaveUp});
+
+  $("writingAnswer").disabled = true;
+  $("writingSubmitBtn").disabled = true;
+  $("writingGiveUpBtn").disabled = true;
+
+  const box = $("writingFeedback");
+  box.className = `feedback-box ${good ? "good" : "bad"}`;
+
+  const reference = result?.reference_answer || q.reference_answer || "";
+  const feedback = result?.feedback_ja || (gaveUp ? "模範解答を確認して、語順と表現を声に出して復習しましょう。" : "");
+  const natural = result?.natural_answer || "";
+  const points = Array.isArray(result?.points) ? result.points : [];
+
+  box.innerHTML = `
+    <strong>${good ? "✓ Correct!" : gaveUp ? "答えを確認" : "△ 要修正"}</strong>
+    ${reference ? `<p><strong>模範解答:</strong> ${escapeHtml(reference)}</p>` : ""}
+    ${natural && natural !== reference ? `<p><strong>より自然な表現:</strong> ${escapeHtml(natural)}</p>` : ""}
+    ${feedback ? `<p>${escapeHtml(feedback)}</p>` : ""}
+    ${points.length ? `<ul>${points.map(x=>`<li>${escapeHtml(x)}</li>`).join("")}</ul>` : ""}
+  `;
+  box.classList.remove("hidden");
+  $("writingNextBtn").classList.remove("hidden");
+  setTimeout(() => $("writingNextBtn").scrollIntoView({behavior:"smooth", block:"end"}), 100);
+}
+
+async function submitWriting(){
+  if(writingAnswered) return;
+  const answer = $("writingAnswer").value.trim();
+  if(!answer) return;
+
+  const q = writingSet[writingIndex];
+  try{
+    $("writingSubmitBtn").disabled = true;
+    $("writingGiveUpBtn").disabled = true;
+    $("writingAnswer").disabled = true;
+
+    const result = await postJson("/api/writing-check", {
+      level: $("level").value,
+      japanese: q.japanese,
+      reference_answer: q.reference_answer || "",
+      user_answer: answer
+    });
+
+    finishWritingAnswer({good:Boolean(result.correct), result});
+  }catch(e){
+    $("writingSubmitBtn").disabled = false;
+    $("writingGiveUpBtn").disabled = false;
+    $("writingAnswer").disabled = false;
+    const box = $("writingFeedback");
+    box.className = "feedback-box bad";
+    box.innerHTML = `<strong>判定エラー</strong><p>${escapeHtml(e.message)}</p>`;
+    box.classList.remove("hidden");
+  }
+}
+
+$("writingSubmitBtn").addEventListener("click", submitWriting);
+$("writingAnswer").addEventListener("keydown", e=>{
+  if((e.ctrlKey || e.metaKey) && e.key === "Enter"){
+    e.preventDefault();
+    submitWriting();
+  }
+});
+
+$("writingGiveUpBtn").addEventListener("click", ()=>{
+  if(writingAnswered) return;
+  const q = writingSet[writingIndex];
+  finishWritingAnswer({
+    good:false,
+    gaveUp:true,
+    result:{
+      reference_answer:q.reference_answer || "",
+      feedback_ja:q.explanation_ja || "模範解答を確認しましょう。",
+      points:q.key_points || []
+    }
+  });
+});
+
+$("writingNextBtn").addEventListener("click", ()=>{
+  writingIndex++;
+  if(writingIndex < writingSet.length){
+    renderWritingQuestion();
+    setTimeout(()=>$("writingQuiz").scrollIntoView({behavior:"smooth",block:"start"}),50);
+  }else{
+    finishWriting();
+  }
+});
+
+function finishWriting(){
+  $("writingQuiz").classList.add("hidden");
+  $("writingSummary").classList.remove("hidden");
+  $("writingFinalScore").textContent = `${writingCorrect}/${writingSet.length}`;
+  $("writingSummaryMsg").textContent =
+    writingCorrect === writingSet.length ? "Perfect!" :
+    writingCorrect / writingSet.length >= 0.8 ? "Great job!" :
+    "模範解答を見ながら、語順と表現を復習しましょう。";
+
+  $("writingReview").innerHTML = writingMistakes.length
+    ? `<h3>Review</h3>${writingMistakes.map(({q,result})=>`
+        <div class="review-card">
+          <strong>${escapeHtml(q.japanese)}</strong>
+          <p><strong>模範解答:</strong> ${escapeHtml(result?.reference_answer || q.reference_answer || "")}</p>
+          ${result?.feedback_ja ? `<p>${escapeHtml(result.feedback_ja)}</p>` : ""}
+        </div>`).join("")}`
+    : `<div class="review-card review-correct">全問正解です！</div>`;
+
+  progress.writing = (progress.writing || 0) + writingSet.length;
+  progress.correct += writingCorrect;
+  progress.total += writingSet.length;
+  saveProgress();
+  $("writingSummary").scrollIntoView({behavior:"smooth", block:"start"});
+}
+
 
 /* Reading */
 $("newReadingBtn").addEventListener("click",generateReading);$("nextReadingBtn").addEventListener("click",generateReading);
