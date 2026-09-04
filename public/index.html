@@ -81,23 +81,24 @@
       <section id="tab-writing" class="tab-page hidden">
         <div class="card">
           <div class="settings-grid">
+            <label><span>出題形式</span><select id="writingMode"><option value="ja-en" selected>日本語 → 英語</option><option value="en-ja">英語 → 日本語</option></select></label>
             <label><span>問題数</span><select id="writingCount"><option value="5" selected>5問</option><option value="10">10問</option></select></label>
           </div>
-          <button id="newWritingBtn" class="primary">＋ 英作文を始める</button>
+          <button id="newWritingBtn" class="primary">＋ 翻訳練習を始める</button>
         </div>
 
         <div id="writingStart" class="card empty-state">
           <div class="empty-icon">✍️</div>
-          <h2>Japanese → English</h2>
-          <p>日本語の短文を、自然な英語に訳す練習です。</p>
+          <h2 id="writingStartTitle">Japanese → English</h2>
+          <p id="writingStartDescription">日本語の短文を、自然な英語に訳す練習です。</p>
         </div>
 
         <div id="writingQuiz" class="card hidden">
           <div class="progress-head"><span id="writingProgress">1 / 5</span><span id="writingRunningScore">Score 0</span></div>
           <div class="bar"><div id="writingBar"></div></div>
-          <div class="writing-label">次の日本語を英訳してください</div>
+          <div id="writingInstruction" class="writing-label">次の日本語を英訳してください</div>
           <h2 id="writingPrompt" class="writing-prompt"></h2>
-          <label class="stack"><span>あなたの英訳</span><textarea id="writingAnswer" rows="3" placeholder="英文を入力"></textarea></label>
+          <label class="stack"><span id="writingAnswerLabel">あなたの英訳</span><textarea id="writingAnswer" rows="3" placeholder="英文を入力"></textarea></label>
           <div class="vocab-input-actions">
             <button id="writingSubmitBtn" class="primary">回答する</button>
             <button id="writingGiveUpBtn" type="button">分かりません</button>
