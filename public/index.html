@@ -30,7 +30,7 @@
       <section id="tab-listening" class="tab-page">
         <div class="card">
           <div class="settings-grid">
-            <label><span>出題形式</span><select id="listeningMode"><option value="dictation">ディクテーション</option><option value="mcq">内容理解 4択×3問</option></select></label>
+            <label><span>出題形式</span><select id="listeningMode"><option value="dictation">ディクテーション</option><option value="translation">日本語訳を入力</option><option value="mcq">内容理解 4択×3問</option></select></label>
             <label><span>長さ</span><select id="listeningLength"><option value="short">短い</option><option value="medium" selected>標準</option><option value="long">長い</option></select></label>
           </div>
           <div class="toolbar"><button id="newListeningBtn" class="primary">＋ 新しい問題</button><button id="playBtn" disabled>▶ 音声再生</button></div>
@@ -39,11 +39,13 @@
         </div>
 
         <div id="dictationPanel" class="card"><label class="stack"><span>聞こえた英文</span><textarea id="dictationAnswer" rows="4" disabled placeholder="英文を入力"></textarea></label><button id="dictationCheckBtn" class="primary" disabled>答え合わせ</button></div>
+        <div id="translationPanel" class="card hidden"><label class="stack"><span>聞こえた英文の日本語訳</span><textarea id="translationAnswer" rows="4" disabled placeholder="日本語訳を入力"></textarea></label><button id="translationCheckBtn" class="primary" disabled>答え合わせ</button></div>
         <div id="listeningMcqPanel" class="card hidden"><h2>内容理解</h2><div id="listeningQuestions"></div><button id="listeningMcqCheckBtn" class="primary" disabled>答え合わせ</button></div>
 
         <div id="listeningResult" class="card hidden">
           <div class="score-box"><div id="listeningScore" class="score">—</div><div><div id="listeningScoreLabel" class="muted"></div><div id="listeningScoreMsg"></div></div></div>
           <div id="dictationYourAnswer" class="hidden"><h3>Your answer</h3><p id="dictationYourAnswerText"></p></div>
+          <div id="translationYourAnswer" class="hidden"><h3>あなたの日本語訳</h3><p id="translationYourAnswerText"></p></div>
           <h3>Transcript</h3><p id="listeningTranscript"></p><h3>日本語訳</h3><p id="listeningTranslation"></p><h3>Listening tip</h3><p id="listeningTip"></p>
           <div id="listeningReview" class="hidden"></div><div id="listeningCoach" class="hidden"><h3>AI Coach</h3><p id="listeningFeedback"></p><ul id="listeningFocus"></ul></div>
           <button id="nextListeningBtn">次の問題</button>
