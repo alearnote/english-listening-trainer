@@ -5113,6 +5113,100 @@ IMPORTANT:
   const d=await generateJson(p);const score=Math.max(0,Math.min(100,Math.round(Number(d.score)||0)));res.json({correct:score>=80,score,feedback_ja:String(d.feedback_ja||""),accepted_answer:String(d.accepted_answer||(mode==="en-ja"?meaningJa:word))});
 }catch(e){console.error(e);res.status(500).json({error:e.message||"回答判定に失敗しました。"});}});
 
+
+app.post("/api/writing", requireKey, async(req,res)=>{
+  try{
+    const level = String(req.body.level || "B1");
+    const topic = String(req.body.topic || "Daily conversation");
+    const count = Math.max(3, Math.min(10, Number(req.body.count) || 5));
+    const prompt = `Create ${count} Japanese-to-English translation exercises for a Japanese learner.
+CEFR level: ${level}
+Topic: ${topic}
+
+Requirements:
+- Each Japanese prompt must be a short, natural sentence that can reasonably be translated at CEFR ${level}.
+- Prefer everyday, practical communication rather than literary Japanese.
+- Keep each prompt focused on one main sentence pattern.
+- Make the questions meaningfully different from each other.
+- Avoid proper nouns unless necessary.
+- Provide ONE natural reference English answer. Other valid translations may also exist.
+- explanation_ja: one short Japanese note about the key grammar/expression.
+- key_points: 1 to 3 short Japanese learning points.
+
+Return ONLY JSON:
+{"questions":[
+  {"japanese":"...","reference_answer":"...","explanation_ja":"...","key_points":["..."]}
+]}
+No markdown.`;
+
+    const data = await generateJson(prompt);
+    if(!data || !Array.isArray(data.questions) || data.questions.length !== count){
+      throw new Error("英作文問題の形式が正しくありません。");
+    }
+    for(const q of data.questions){
+      if(!q?.japanese || !q?.reference_answer) throw new Error("英作文問題に不足があります。");
+    }
+    res.json(data);
+  }catch(e){
+    console.error(e);
+    res.status(500).json({error:e.message || "英作文問題の作成に失敗しました。"});
+  }
+});
+
+app.post("/api/writing-check", requireKey, async(req,res)=>{
+  try{
+    const level = String(req.body.level || "B1");
+    const japanese = String(req.body.japanese || "").trim();
+    const reference = String(req.body.reference_answer || "").trim();
+    const userAnswer = String(req.body.user_answer || "").trim();
+    if(!japanese || !userAnswer) return res.status(400).json({error:"日本語文または回答がありません。"});
+
+    const prompt = `You are grading a Japanese learner's English translation.
+Target CEFR level: ${level}
+
+Japanese source:
+${japanese}
+
+One reference answer:
+${reference}
+
+Learner answer:
+${userAnswer}
+
+Judge by whether the learner's English accurately conveys the Japanese meaning.
+IMPORTANT:
+- Do NOT require an exact match to the reference answer.
+- Accept different vocabulary, word order, contractions, and natural paraphrases when meaning is preserved.
+- Minor punctuation/capitalization mistakes should not make an otherwise correct answer wrong.
+- At lower CEFR levels, accept simple but grammatically acceptable English.
+- Mark incorrect when there is a meaningful error in subject/object, tense/time, negation, modality, quantity, condition, core vocabulary meaning, or sentence structure that changes/obscures the intended meaning.
+- If understandable but with a meaningful grammar/naturalness problem, mark correct=false and explain the smallest useful correction.
+
+Return ONLY JSON:
+{
+  "correct": true,
+  "feedback_ja": "日本語で簡潔なフィードバック",
+  "reference_answer": "a natural correct answer",
+  "natural_answer": "a natural corrected version of the learner answer",
+  "points": ["短い学習ポイント"]
+}
+No markdown.`;
+
+    const data = await generateJson(prompt);
+    res.json({
+      correct:Boolean(data.correct),
+      feedback_ja:String(data.feedback_ja || ""),
+      reference_answer:String(data.reference_answer || reference),
+      natural_answer:String(data.natural_answer || ""),
+      points:Array.isArray(data.points) ? data.points.slice(0,3) : []
+    });
+  }catch(e){
+    console.error(e);
+    res.status(500).json({error:e.message || "英作文の判定に失敗しました。"});
+  }
+});
+
+
 app.post("/api/reading",requireKey,async(req,res)=>{try{const level=String(req.body.level||"B1"),topic=String(req.body.topic||"Daily conversation"),length=String(req.body.length||"medium"),count=Math.max(3,Math.min(5,Number(req.body.count)||4)),words=length==="short"?"90-130":length==="medium"?"160-230":"280-380";const p=`Create ONE English reading comprehension exercise for a Japanese learner. CEFR ${level}. Topic ${topic}. Passage about ${words} words. Return ONLY JSON {"passage":"...","translation":"...","questions":[{"question":"...","options":["A","B","C","D"],"answer_index":0,"explanation_ja":"..."}],"key_vocabulary":[{"word":"...","meaning_ja":"..."}]}. Exactly ${count} questions, 4 English options each, mix main idea/detail/vocabulary/inference, 4-8 key vocabulary, no markdown.`;const d=await generateJson(p);validateQuestions(d.questions,count);res.json(d);}catch(e){console.error(e);res.status(500).json({error:e.message||"リーディング問題の作成に失敗しました。"});}});
 
 app.post("/api/speech",requireKey,async(req,res)=>{try{const text=String(req.body.text||"").trim();if(!text)return res.status(400).json({error:"読み上げる英文がありません。"});const r=await fetch("https://api.openai.com/v1/audio/speech",{method:"POST",headers:{Authorization:`Bearer ${OPENAI_API_KEY}`,"Content-Type":"application/json"},body:JSON.stringify({model:"gpt-4o-mini-tts",voice:"alloy",input:text,response_format:"mp3"})});if(!r.ok)return res.status(r.status).json({error:(await r.text())||"音声生成に失敗しました。"});res.set("Content-Type","audio/mpeg");res.send(Buffer.from(await r.arrayBuffer()));}catch(e){console.error(e);res.status(500).json({error:e.message||"音声生成に失敗しました。"});}});
