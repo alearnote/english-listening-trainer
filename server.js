@@ -43,7 +43,7 @@ function chooseListeningCategory(){const blocked=new Set(recentRandomCategories.
 app.post("/api/listening",requireKey,async(req,res)=>{try{
   const mode=String(req.body.mode||"dictation"),level=String(req.body.level||"B1"),requestedTopic=String(req.body.topic||"Random"),length=String(req.body.length||"short");const recent=Array.isArray(req.body.recentListening)?req.body.recentListening.map(x=>String(x||"").trim()).filter(Boolean).slice(-20):[];const veryRecent=recent.slice(-5);let actualTopic=requestedTopic;let selected=null;if(requestedTopic.trim().toLowerCase()==="random"){selected=chooseListeningCategory();actualTopic=selected.label;}const lengthRule=length==="short"?"8-14 words":length==="medium"?"15-28 words":"29-50 words";const recentText=recent.length?recent.map((x,i)=>`${i+1}. ${x}`).join("\n"):"(none)";const recent5=veryRecent.length?veryRecent.map((x,i)=>`${i+1}. ${x}`).join("\n"):"(none)";
   const variety=`Actual scenario category: ${actualTopic}\nRecent exercises:\n${recentText}\nFive most recent:\n${recent5}\nRules: do not repeat the same underlying event, location+problem+goal+outcome, or communicative purpose. Missing a bus/train/subway all count as essentially the same scenario. Keep it natural and realistic. If Random, use the selected category but create a fresh situation.`;
-  const prompt=mode==="mcq"?`Create ONE English listening comprehension exercise for a Japanese learner. CEFR ${level}. Length ${lengthRule}. ${variety}\nReturn ONLY JSON: {"sentence":"...","translation":"...","listening_tip":"...","scenario":"...","questions":[{"question":"...","options":["A","B","C","D"],"answer_index":0,"explanation_ja":"..."},{"question":"...","options":["A","B","C","D"],"answer_index":1,"explanation_ja":"..."},{"question":"...","options":["A","B","C","D"],"answer_index":2,"explanation_ja":"..."}]} Exactly 3 questions, 4 English options each, answers supported by audio, natural CEFR ${level}, no markdown.`:`Create ONE English listening dictation exercise for a Japanese learner. CEFR ${level}. Length ${lengthRule}. ${variety}\nReturn ONLY JSON: {"sentence":"...","translation":"...","listening_tip":"...","scenario":"..."}. Natural useful CEFR ${level}, no markdown.`;
+  const prompt=mode==="mcq"?`Create ONE English listening comprehension exercise for a Japanese learner. CEFR ${level}. Length ${lengthRule}. ${variety}\nReturn ONLY JSON: {"sentence":"...","translation":"...","listening_tip":"...","scenario":"...","questions":[{"question":"...","options":["A","B","C","D"],"answer_index":0,"explanation_ja":"..."},{"question":"...","options":["A","B","C","D"],"answer_index":1,"explanation_ja":"..."},{"question":"...","options":["A","B","C","D"],"answer_index":2,"explanation_ja":"..."}]} Exactly 3 questions, 4 English options each, answers supported by audio, natural CEFR ${level}, no markdown.`:`Create ONE English listening exercise for a Japanese learner. CEFR ${level}. Length ${lengthRule}. ${variety}\nReturn ONLY JSON: {"sentence":"...","translation":"...","listening_tip":"...","scenario":"..."}. Natural useful CEFR ${level}, no markdown.`;
   let data,last;for(let i=0;i<2;i++){try{data=await generateJson(prompt);if(!data?.sentence)throw new Error("Listening英文が生成されませんでした。");if(mode==="mcq")validateQuestions(data.questions,3);break;}catch(e){data=null;last=e;}}
   if(!data)throw last||new Error("Listening問題の生成に失敗しました。");res.json(data);
 }catch(e){console.error(e);res.status(500).json({error:e.message||"問題作成に失敗しました。"});}});
@@ -2689,6 +2689,34 @@ IMPORTANT:
 app.post("/api/reading",requireKey,async(req,res)=>{try{const level=String(req.body.level||"B1"),topic=String(req.body.topic||"Daily conversation"),length=String(req.body.length||"medium"),count=Math.max(3,Math.min(5,Number(req.body.count)||4)),words=length==="short"?"90-130":length==="medium"?"160-230":"280-380";const p=`Create ONE English reading comprehension exercise for a Japanese learner. CEFR ${level}. Topic ${topic}. Passage about ${words} words. Return ONLY JSON {"passage":"...","translation":"...","questions":[{"question":"...","options":["A","B","C","D"],"answer_index":0,"explanation_ja":"..."}],"key_vocabulary":[{"word":"...","meaning_ja":"..."}]}. Exactly ${count} questions, 4 English options each, mix main idea/detail/vocabulary/inference, 4-8 key vocabulary, no markdown.`;const d=await generateJson(p);validateQuestions(d.questions,count);res.json(d);}catch(e){console.error(e);res.status(500).json({error:e.message||"リーディング問題の作成に失敗しました。"});}});
 
 app.post("/api/speech",requireKey,async(req,res)=>{try{const text=String(req.body.text||"").trim();if(!text)return res.status(400).json({error:"読み上げる英文がありません。"});const r=await fetch("https://api.openai.com/v1/audio/speech",{method:"POST",headers:{Authorization:`Bearer ${OPENAI_API_KEY}`,"Content-Type":"application/json"},body:JSON.stringify({model:"gpt-4o-mini-tts",voice:"alloy",input:text,response_format:"mp3"})});if(!r.ok)return res.status(r.status).json({error:(await r.text())||"音声生成に失敗しました。"});res.set("Content-Type","audio/mpeg");res.send(Buffer.from(await r.arrayBuffer()));}catch(e){console.error(e);res.status(500).json({error:e.message||"音声生成に失敗しました。"});}});
+
+app.post("/api/listening-translation-check",requireKey,async(req,res)=>{try{
+  const sentence=String(req.body.sentence||"").trim();
+  const referenceTranslation=String(req.body.referenceTranslation||"").trim();
+  const answer=String(req.body.answer||"").trim();
+  if(!sentence||!answer) return res.status(400).json({error:"英文と回答が必要です。"});
+  const prompt=`You are grading a Japanese learner's translation of an English listening sentence.
+Judge SEMANTIC UNDERSTANDING, not literal wording.
+English: ${sentence}
+Reference Japanese translation: ${referenceTranslation}
+Learner's Japanese answer: ${answer}
+
+Rules:
+- Accept natural paraphrases and different Japanese wording if the core meaning is preserved.
+- Do NOT require word-for-word correspondence with the reference translation.
+- Minor omissions that do not change the essential message may still be correct.
+- Mark incorrect when there is a meaningful misunderstanding, reversal, missing key fact, wrong subject/object, tense/time, quantity, condition, negation, or communicative intent.
+Return ONLY JSON:
+{"correct":true,"summary":"short Japanese result","feedback":"Japanese feedback in 2-4 concise sentences","focus":["short Japanese point 1","short Japanese point 2"]}
+No markdown.`;
+  const data=await generateJson(prompt);
+  res.json({
+    correct:!!data.correct,
+    summary:String(data.summary||""),
+    feedback:String(data.feedback||""),
+    focus:Array.isArray(data.focus)?data.focus.slice(0,3).map(x=>String(x)):[]
+  });
+}catch(e){console.error(e);res.status(500).json({error:e.message||"日本語訳の判定に失敗しました。"});}});
 
 app.post("/api/explain",requireKey,async(req,res)=>{try{const sentence=String(req.body.sentence||""),answer=String(req.body.answer||"");const p=`You are an English listening coach for a Japanese learner. Correct English: ${sentence}. Learner's dictation: ${answer}. Return ONLY JSON {"feedback":"Japanese feedback in 3-5 concise sentences","focus":["short Japanese focus point 1","short Japanese focus point 2"]}. Explain what was correct/missed, likely listening causes such as linking/weak forms/reductions/rhythm, and one practice tip. No markdown.`;res.json(await generateJson(p));}catch(e){console.error(e);res.status(500).json({error:e.message||"解説生成に失敗しました。"});}});
 
