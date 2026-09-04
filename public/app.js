@@ -501,7 +501,24 @@ function finishVocab(){
 }
 
 
-/* Writing: Japanese -> English */
+/* Writing: Japanese <-> English */
+function syncWritingModeUI(){
+  const mode = $("writingMode").value;
+  const jaToEn = mode === "ja-en";
+  const title = $("writingStartTitle");
+  const description = $("writingStartDescription");
+  if(title) title.textContent = jaToEn ? "Japanese → English" : "English → Japanese";
+  if(description) description.textContent = jaToEn
+    ? "日本語の短文を、自然な英語に訳す練習です。"
+    : "英文の短文を、自然な日本語に訳す練習です。";
+  $("writingInstruction").textContent = jaToEn
+    ? "次の日本語を英訳してください"
+    : "次の英文を日本語訳してください";
+  $("writingAnswerLabel").textContent = jaToEn ? "あなたの英訳" : "あなたの日本語訳";
+  $("writingAnswer").placeholder = jaToEn ? "英文を入力" : "日本語訳を入力";
+}
+$("writingMode").addEventListener("change", syncWritingModeUI);
+syncWritingModeUI();
 $("newWritingBtn").addEventListener("click", generateWriting);
 $("writingAgainBtn").addEventListener("click", generateWriting);
 
@@ -510,18 +527,24 @@ async function generateWriting(){
   try{
     btn.disabled = true;
     $("writingStart").classList.remove("hidden");
-    $("writingStart").innerHTML = `<div class="empty-icon">⏳</div><h2>英作文問題を作成しています…</h2>`;
+    $("writingStart").innerHTML = `<div class="empty-icon">⏳</div><h2>翻訳問題を作成しています…</h2>`;
     $("writingQuiz").classList.add("hidden");
     $("writingSummary").classList.add("hidden");
 
     const count = Number($("writingCount").value) || 5;
-    const data = await postJson("/api/writing", {...commonSettings(), count});
+    const mode = $("writingMode").value;
+    const data = await postJson("/api/writing", {...commonSettings(), count, mode});
     writingSet = Array.isArray(data.questions) ? data.questions : [];
-    if(!writingSet.length) throw new Error("英作文問題を生成できませんでした。");
+    if(!writingSet.length) throw new Error("翻訳問題を生成できませんでした。");
 
     writingIndex = 0;
     writingCorrect = 0;
     writingMistakes = [];
+    $("writingStart").innerHTML = `
+      <div class="empty-icon">✍️</div>
+      <h2 id="writingStartTitle"></h2>
+      <p id="writingStartDescription"></p>`;
+    syncWritingModeUI();
     $("writingStart").classList.add("hidden");
     $("writingQuiz").classList.remove("hidden");
     renderWritingQuestion();
@@ -541,7 +564,9 @@ function renderWritingQuestion(){
   $("writingProgress").textContent = `${writingIndex + 1} / ${total}`;
   $("writingRunningScore").textContent = `Score ${writingCorrect}`;
   $("writingBar").style.width = `${writingIndex / total * 100}%`;
-  $("writingPrompt").textContent = q.japanese;
+  const mode = $("writingMode").value;
+  $("writingPrompt").textContent = q.source_text || (mode === "ja-en" ? q.japanese : q.english) || "";
+  syncWritingModeUI();
   $("writingAnswer").value = "";
   $("writingAnswer").disabled = false;
   $("writingSubmitBtn").disabled = false;
@@ -566,14 +591,17 @@ function finishWritingAnswer({good, result=null, gaveUp=false}){
   box.className = `feedback-box ${good ? "good" : "bad"}`;
 
   const reference = result?.reference_answer || q.reference_answer || "";
-  const feedback = result?.feedback_ja || (gaveUp ? "模範解答を確認して、語順と表現を声に出して復習しましょう。" : "");
+  const feedback = result?.feedback_ja || (gaveUp ? "模範解答を確認して、意味と表現を復習しましょう。" : "");
   const natural = result?.natural_answer || "";
   const points = Array.isArray(result?.points) ? result.points : [];
+  const mode = $("writingMode").value;
+  const referenceLabel = mode === "ja-en" ? "模範英訳" : "模範日本語訳";
+  const naturalLabel = mode === "ja-en" ? "より自然な英文" : "より自然な日本語";
 
   box.innerHTML = `
     <strong>${good ? "✓ Correct!" : gaveUp ? "答えを確認" : "△ 要修正"}</strong>
-    ${reference ? `<p><strong>模範解答:</strong> ${escapeHtml(reference)}</p>` : ""}
-    ${natural && natural !== reference ? `<p><strong>より自然な表現:</strong> ${escapeHtml(natural)}</p>` : ""}
+    ${reference ? `<p><strong>${referenceLabel}:</strong> ${escapeHtml(reference)}</p>` : ""}
+    ${natural && natural !== reference ? `<p><strong>${naturalLabel}:</strong> ${escapeHtml(natural)}</p>` : ""}
     ${feedback ? `<p>${escapeHtml(feedback)}</p>` : ""}
     ${points.length ? `<ul>${points.map(x=>`<li>${escapeHtml(x)}</li>`).join("")}</ul>` : ""}
   `;
@@ -595,7 +623,8 @@ async function submitWriting(){
 
     const result = await postJson("/api/writing-check", {
       level: $("level").value,
-      japanese: q.japanese,
+      mode: $("writingMode").value,
+      source_text: q.source_text || q.japanese || q.english || "",
       reference_answer: q.reference_answer || "",
       user_answer: answer
     });
@@ -656,7 +685,7 @@ function finishWriting(){
   $("writingReview").innerHTML = writingMistakes.length
     ? `<h3>Review</h3>${writingMistakes.map(({q,result})=>`
         <div class="review-card">
-          <strong>${escapeHtml(q.japanese)}</strong>
+          <strong>${escapeHtml(q.source_text || q.japanese || q.english || "")}</strong>
           <p><strong>模範解答:</strong> ${escapeHtml(result?.reference_answer || q.reference_answer || "")}</p>
           ${result?.feedback_ja ? `<p>${escapeHtml(result.feedback_ja)}</p>` : ""}
         </div>`).join("")}`
