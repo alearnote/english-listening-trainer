@@ -251,11 +251,17 @@ function resetListeningMode() {
   $("dictationAnswer").value = "";
   $("dictationAnswer").disabled = true;
   $("dictationCheckBtn").disabled = true;
+  $("translationAnswer").value = "";
+  $("translationAnswer").disabled = true;
+  $("translationCheckBtn").disabled = true;
+  $("translationYourAnswer").classList.add("hidden");
+  $("dictationYourAnswer").classList.add("hidden");
   $("playBtn").disabled = true;
   $("listeningMcqPanel").classList.add("hidden");
   $("listeningQuestions").innerHTML = "";
   $("listeningMcqCheckBtn").disabled = true;
   $("dictationPanel").classList.toggle("hidden", $("listeningMode").value !== "dictation");
+  $("translationPanel").classList.toggle("hidden", $("listeningMode").value !== "translation");
   $("listeningStatus").textContent = "「新しい問題」を押してください";
 }
 
@@ -280,6 +286,11 @@ $("newListeningBtn").addEventListener("click", async () => {
       $("dictationAnswer").disabled = false;
       $("dictationCheckBtn").disabled = false;
       $("listeningStatus").textContent = "準備できました。音声を再生してください。";
+    } else if ($("listeningMode").value === "translation") {
+      $("translationPanel").classList.remove("hidden");
+      $("translationAnswer").disabled = false;
+      $("translationCheckBtn").disabled = false;
+      $("listeningStatus").textContent = "準備できました。音声を聞いて、日本語訳を入力してください。";
     } else {
       $("listeningStatus").textContent = "準備できました。まず音声を最後まで聞いてください。";
     }
@@ -314,6 +325,9 @@ async function playListening() {
           $("listeningMcqPanel").scrollIntoView({behavior:"smooth",block:"start"});
         }
         $("listeningStatus").textContent = "内容について3問に答えてください。";
+      } else if ($("listeningMode").value === "translation") {
+        $("listeningStatus").textContent = "聞こえた内容を日本語に訳して入力してください。";
+        $("translationAnswer").focus();
       } else $("listeningStatus").textContent = "聞こえた英文を入力してください。";
     };
     await audio.play();
@@ -356,10 +370,49 @@ $("dictationCheckBtn").addEventListener("click",async()=>{
   try{const x=await postJson("/api/explain",{sentence:listening.sentence,answer:user});$("listeningFeedback").textContent=x.feedback;$("listeningFocus").innerHTML=(x.focus||[]).map(i=>`<li>${escapeHtml(i)}</li>`).join("");}catch{$("listeningFeedback").textContent="AI解説の取得に失敗しました。";}
 });
 
+$("translationCheckBtn").addEventListener("click", async () => {
+  if (!listening || !$("translationAnswer").value.trim()) return;
+  const user = $("translationAnswer").value.trim();
+  $("translationCheckBtn").disabled = true;
+  $("translationAnswer").disabled = true;
+  $("listeningScore").textContent = "…";
+  $("listeningScoreLabel").textContent = "Translation";
+  $("listeningScoreMsg").textContent = "AIが意味を判定しています…";
+  $("dictationYourAnswer").classList.add("hidden");
+  $("translationYourAnswer").classList.remove("hidden");
+  $("translationYourAnswerText").textContent = user;
+  $("listeningReview").classList.add("hidden");
+  $("listeningCoach").classList.remove("hidden");
+  showListeningBase();
+  $("listeningFeedback").textContent = "AIが解説を生成しています…";
+  $("listeningFocus").innerHTML = "";
+  try {
+    const x = await postJson("/api/listening-translation-check", {
+      sentence: listening.sentence,
+      referenceTranslation: listening.translation,
+      answer: user
+    });
+    const good = !!x.correct;
+    $("listeningScore").textContent = good ? "✓" : "△";
+    $("listeningScoreLabel").textContent = good ? "Meaning understood" : "Needs review";
+    $("listeningScoreMsg").textContent = x.summary || (good ? "内容を正しく捉えています。" : "意味の取り違えがあります。");
+    $("listeningFeedback").textContent = x.feedback || "";
+    $("listeningFocus").innerHTML = (x.focus || []).map(i=>`<li>${escapeHtml(i)}</li>`).join("");
+    addProgress("listening", good ? 1 : 0, 1);
+  } catch(e) {
+    $("listeningScore").textContent = "—";
+    $("listeningScoreLabel").textContent = "Translation";
+    $("listeningScoreMsg").textContent = "判定に失敗しました。";
+    $("listeningFeedback").textContent = e.message || "AI判定の取得に失敗しました。";
+    $("translationCheckBtn").disabled = false;
+    $("translationAnswer").disabled = false;
+  }
+});
+
 $("listeningMcqCheckBtn").addEventListener("click",()=>{
   let correctCount=0;
   const html=(listening.questions||[]).map((q,i)=>{const s=document.querySelector(`input[name="lq${i}"]:checked`);if(!s)return"";const si=Number(s.value),ai=Number(q.answer_index);if(si===ai)correctCount++;return `<div class="review-card ${si===ai?"review-correct":"review-wrong"}"><div class="question-title">Q${i+1}. ${escapeHtml(q.question)}</div><p><strong>Your answer:</strong> ${String.fromCharCode(65+si)}. ${escapeHtml(q.options[si])}</p><p><strong>Correct:</strong> ${String.fromCharCode(65+ai)}. ${escapeHtml(q.options[ai])}</p><p>${escapeHtml(q.explanation_ja||"")}</p></div>`;}).join("");
-  const total=(listening.questions||[]).length;$("listeningScore").textContent=`${correctCount}/${total}`;$("listeningScoreLabel").textContent="Comprehension score";$("listeningScoreMsg").textContent=correctCount===total?"Excellent!":correctCount>=Math.ceil(total*.67)?"Good! もう一度聞くとさらに定着します。":"スクリプトを確認して聞き直しましょう。";$("dictationYourAnswer").classList.add("hidden");$("listeningReview").innerHTML=html;$("listeningReview").classList.remove("hidden");$("listeningCoach").classList.add("hidden");showListeningBase();addProgress("listening",correctCount,total);$("listeningMcqCheckBtn").disabled=true;$("listeningQuestions").querySelectorAll("input").forEach(x=>x.disabled=true);
+  const total=(listening.questions||[]).length;$("listeningScore").textContent=`${correctCount}/${total}`;$("listeningScoreLabel").textContent="Comprehension score";$("listeningScoreMsg").textContent=correctCount===total?"Excellent!":correctCount>=Math.ceil(total*.67)?"Good! もう一度聞くとさらに定着します。":"スクリプトを確認して聞き直しましょう。";$("dictationYourAnswer").classList.add("hidden");$("translationYourAnswer").classList.add("hidden");$("listeningReview").innerHTML=html;$("listeningReview").classList.remove("hidden");$("listeningCoach").classList.add("hidden");showListeningBase();addProgress("listening",correctCount,total);$("listeningMcqCheckBtn").disabled=true;$("listeningQuestions").querySelectorAll("input").forEach(x=>x.disabled=true);
 });
 $("nextListeningBtn").addEventListener("click",()=>$("newListeningBtn").click());
 
