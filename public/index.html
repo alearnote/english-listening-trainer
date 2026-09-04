@@ -9,12 +9,13 @@
 <body>
   <div class="app-shell">
     <header class="app-header">
-      <div><h1>English Trainer</h1><p>Listening・Vocabulary・Reading</p></div>
+      <div><h1>English Trainer</h1><p>Listening・Vocabulary・Writing・Reading</p></div>
     </header>
 
     <nav class="tabs">
       <button class="tab active" data-tab="listening">🎧 Listening</button>
       <button class="tab" data-tab="vocabulary">🧠 Vocabulary</button>
+      <button class="tab" data-tab="writing">✍️ Writing</button>
       <button class="tab" data-tab="reading">📖 Reading</button>
       <button class="tab" data-tab="progress">📊 Progress</button>
     </nav>
@@ -76,6 +77,42 @@
         <div id="vocabSummary" class="card hidden"><div class="score-box"><div id="vocabFinalScore" class="score">—</div><div id="vocabSummaryMsg"></div></div><div id="vocabReview"></div><button id="vocabAgainBtn">もう一度</button></div>
       </section>
 
+
+      <section id="tab-writing" class="tab-page hidden">
+        <div class="card">
+          <div class="settings-grid">
+            <label><span>問題数</span><select id="writingCount"><option value="5" selected>5問</option><option value="10">10問</option></select></label>
+          </div>
+          <button id="newWritingBtn" class="primary">＋ 英作文を始める</button>
+        </div>
+
+        <div id="writingStart" class="card empty-state">
+          <div class="empty-icon">✍️</div>
+          <h2>Japanese → English</h2>
+          <p>日本語の短文を、自然な英語に訳す練習です。</p>
+        </div>
+
+        <div id="writingQuiz" class="card hidden">
+          <div class="progress-head"><span id="writingProgress">1 / 5</span><span id="writingRunningScore">Score 0</span></div>
+          <div class="bar"><div id="writingBar"></div></div>
+          <div class="writing-label">次の日本語を英訳してください</div>
+          <h2 id="writingPrompt" class="writing-prompt"></h2>
+          <label class="stack"><span>あなたの英訳</span><textarea id="writingAnswer" rows="3" placeholder="英文を入力"></textarea></label>
+          <div class="vocab-input-actions">
+            <button id="writingSubmitBtn" class="primary">回答する</button>
+            <button id="writingGiveUpBtn" type="button">分かりません</button>
+          </div>
+          <div id="writingFeedback" class="feedback-box hidden"></div>
+          <button id="writingNextBtn" class="hidden">次の問題</button>
+        </div>
+
+        <div id="writingSummary" class="card hidden">
+          <div class="score-box"><div id="writingFinalScore" class="score">—</div><div id="writingSummaryMsg"></div></div>
+          <div id="writingReview"></div>
+          <button id="writingAgainBtn">もう一度</button>
+        </div>
+      </section>
+
       <section id="tab-reading" class="tab-page hidden">
         <div class="card">
           <div class="settings-grid">
@@ -89,7 +126,7 @@
       </section>
 
       <section id="tab-progress" class="tab-page hidden">
-        <div class="card"><h2>Today's progress</h2><div class="stats"><div><strong id="statListening">0</strong><span>Listening</span></div><div><strong id="statVocabulary">0</strong><span>Vocabulary</span></div><div><strong id="statReading">0</strong><span>Reading</span></div><div><strong id="statAccuracy">—</strong><span>Accuracy</span></div></div><p>今日の合計: <strong id="todayTotal">0</strong></p><h3>苦手単語</h3><div id="weakWords" class="weak-list"></div><button id="clearProgressBtn" class="danger">今日の記録をリセット</button></div>
+        <div class="card"><h2>Today's progress</h2><div class="stats"><div><strong id="statListening">0</strong><span>Listening</span></div><div><strong id="statVocabulary">0</strong><span>Vocabulary</span></div><div><strong id="statWriting">0</strong><span>Writing</span></div><div><strong id="statReading">0</strong><span>Reading</span></div><div><strong id="statAccuracy">—</strong><span>Accuracy</span></div></div><p>今日の合計: <strong id="todayTotal">0</strong></p><h3>苦手単語</h3><div id="weakWords" class="weak-list"></div><button id="clearProgressBtn" class="danger">今日の記録をリセット</button></div>
       </section>
     </main>
   </div>
