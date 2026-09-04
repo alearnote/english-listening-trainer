@@ -34,3 +34,9 @@
     grid-template-columns: 1fr 1fr;
   }
 }
+
+
+/* Writing */
+.writing-label{font-size:.9rem;color:var(--muted);margin-bottom:.45rem}
+.writing-prompt{line-height:1.65;margin-top:.25rem;margin-bottom:1.1rem}
+#writingAnswer{font-size:1rem;line-height:1.6}
