@@ -5119,53 +5119,88 @@ app.post("/api/writing", requireKey, async(req,res)=>{
     const level = String(req.body.level || "B1");
     const topic = String(req.body.topic || "Daily conversation");
     const count = Math.max(3, Math.min(10, Number(req.body.count) || 5));
-    const prompt = `Create ${count} Japanese-to-English translation exercises for a Japanese learner.
+    const mode = req.body.mode === "en-ja" ? "en-ja" : "ja-en";
+
+    const directionRule = mode === "ja-en"
+      ? `Create Japanese-to-English translation exercises.
+- source_text must be a short, natural JAPANESE sentence.
+- reference_answer must be ONE natural ENGLISH translation at CEFR ${level}.
+- explanation_ja should briefly explain useful English grammar/vocabulary.`
+      : `Create English-to-Japanese translation exercises.
+- source_text must be a short, natural ENGLISH sentence at CEFR ${level}.
+- reference_answer must be ONE natural JAPANESE translation.
+- explanation_ja should briefly explain the English expression/grammar and how it maps into Japanese.`;
+
+    const prompt = `Create ${count} translation exercises for a Japanese learner.
 CEFR level: ${level}
 Topic: ${topic}
+Direction: ${mode}
+
+${directionRule}
 
 Requirements:
-- Each Japanese prompt must be a short, natural sentence that can reasonably be translated at CEFR ${level}.
-- Prefer everyday, practical communication rather than literary Japanese.
-- Keep each prompt focused on one main sentence pattern.
+- Keep each source sentence short and practical.
+- Prefer everyday/practical communication rather than literary language.
+- Keep each item focused on one main sentence pattern or meaning unit.
 - Make the questions meaningfully different from each other.
 - Avoid proper nouns unless necessary.
-- Provide ONE natural reference English answer. Other valid translations may also exist.
-- explanation_ja: one short Japanese note about the key grammar/expression.
+- The reference answer is only one example; semantically equivalent translations may also be valid.
 - key_points: 1 to 3 short Japanese learning points.
 
 Return ONLY JSON:
 {"questions":[
-  {"japanese":"...","reference_answer":"...","explanation_ja":"...","key_points":["..."]}
+  {"source_text":"...","reference_answer":"...","explanation_ja":"...","key_points":["..."]}
 ]}
 No markdown.`;
 
     const data = await generateJson(prompt);
     if(!data || !Array.isArray(data.questions) || data.questions.length !== count){
-      throw new Error("英作文問題の形式が正しくありません。");
+      throw new Error("翻訳問題の形式が正しくありません。");
     }
     for(const q of data.questions){
-      if(!q?.japanese || !q?.reference_answer) throw new Error("英作文問題に不足があります。");
+      if(!q?.source_text || !q?.reference_answer) throw new Error("翻訳問題に不足があります。");
     }
     res.json(data);
   }catch(e){
     console.error(e);
-    res.status(500).json({error:e.message || "英作文問題の作成に失敗しました。"});
+    res.status(500).json({error:e.message || "翻訳問題の作成に失敗しました。"});
   }
 });
 
 app.post("/api/writing-check", requireKey, async(req,res)=>{
   try{
     const level = String(req.body.level || "B1");
-    const japanese = String(req.body.japanese || "").trim();
+    const mode = req.body.mode === "en-ja" ? "en-ja" : "ja-en";
+    const sourceText = String(req.body.source_text || "").trim();
     const reference = String(req.body.reference_answer || "").trim();
     const userAnswer = String(req.body.user_answer || "").trim();
-    if(!japanese || !userAnswer) return res.status(400).json({error:"日本語文または回答がありません。"});
+    if(!sourceText || !userAnswer) return res.status(400).json({error:"問題文または回答がありません。"});
 
-    const prompt = `You are grading a Japanese learner's English translation.
+    const direction = mode === "ja-en"
+      ? "The source is Japanese and the learner must translate it into English."
+      : "The source is English and the learner must translate it into Japanese.";
+
+    const gradingRules = mode === "ja-en"
+      ? `- Judge whether the English accurately conveys the Japanese meaning.
+- Do NOT require an exact match to the reference answer.
+- Accept different English vocabulary, word order, contractions, and natural paraphrases when meaning is preserved.
+- Minor punctuation/capitalization mistakes should not make an otherwise correct answer wrong.
+- At lower CEFR levels, accept simple but grammatically acceptable English.
+- A meaningful grammar error that changes or obscures the intended meaning should be incorrect.`
+      : `- Judge whether the Japanese accurately conveys the English meaning.
+- Do NOT require an exact match to the reference Japanese translation.
+- Accept natural Japanese paraphrases and omitted subjects when natural in Japanese.
+- Accept different wording when the core meaning is preserved.
+- Do not penalize differences in politeness level unless they materially change the communicative intent.
+- Minor kana/kanji/spacing variation should not make an otherwise correct answer wrong.
+- A meaningful error in negation, subject/object relationship, tense/time, modality, quantity, condition, or core vocabulary meaning should be incorrect.`;
+
+    const prompt = `You are grading a translation by a Japanese learner.
 Target CEFR level: ${level}
+${direction}
 
-Japanese source:
-${japanese}
+Source text:
+${sourceText}
 
 One reference answer:
 ${reference}
@@ -5173,21 +5208,14 @@ ${reference}
 Learner answer:
 ${userAnswer}
 
-Judge by whether the learner's English accurately conveys the Japanese meaning.
-IMPORTANT:
-- Do NOT require an exact match to the reference answer.
-- Accept different vocabulary, word order, contractions, and natural paraphrases when meaning is preserved.
-- Minor punctuation/capitalization mistakes should not make an otherwise correct answer wrong.
-- At lower CEFR levels, accept simple but grammatically acceptable English.
-- Mark incorrect when there is a meaningful error in subject/object, tense/time, negation, modality, quantity, condition, core vocabulary meaning, or sentence structure that changes/obscures the intended meaning.
-- If understandable but with a meaningful grammar/naturalness problem, mark correct=false and explain the smallest useful correction.
+${gradingRules}
 
 Return ONLY JSON:
 {
   "correct": true,
   "feedback_ja": "日本語で簡潔なフィードバック",
-  "reference_answer": "a natural correct answer",
-  "natural_answer": "a natural corrected version of the learner answer",
+  "reference_answer": "a natural correct answer in the target language",
+  "natural_answer": "a natural corrected version of the learner answer in the target language",
   "points": ["短い学習ポイント"]
 }
 No markdown.`;
@@ -5202,10 +5230,9 @@ No markdown.`;
     });
   }catch(e){
     console.error(e);
-    res.status(500).json({error:e.message || "英作文の判定に失敗しました。"});
+    res.status(500).json({error:e.message || "翻訳の判定に失敗しました。"});
   }
 });
-
 
 app.post("/api/reading",requireKey,async(req,res)=>{try{const level=String(req.body.level||"B1"),topic=String(req.body.topic||"Daily conversation"),length=String(req.body.length||"medium"),count=Math.max(3,Math.min(5,Number(req.body.count)||4)),words=length==="short"?"90-130":length==="medium"?"160-230":"280-380";const p=`Create ONE English reading comprehension exercise for a Japanese learner. CEFR ${level}. Topic ${topic}. Passage about ${words} words. Return ONLY JSON {"passage":"...","translation":"...","questions":[{"question":"...","options":["A","B","C","D"],"answer_index":0,"explanation_ja":"..."}],"key_vocabulary":[{"word":"...","meaning_ja":"..."}]}. Exactly ${count} questions, 4 English options each, mix main idea/detail/vocabulary/inference, 4-8 key vocabulary, no markdown.`;const d=await generateJson(p);validateQuestions(d.questions,count);res.json(d);}catch(e){console.error(e);res.status(500).json({error:e.message||"リーディング問題の作成に失敗しました。"});}});
 
