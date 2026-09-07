@@ -1,5285 +1,901 @@
-const express = require("express");
-const path = require("path");
-require("dotenv").config();
+const $ = id => document.getElementById(id);
 
-const app = express();
-const PORT = process.env.PORT || 3000;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+let listening = null;
+let listeningAudioUrl = null;
+let listeningSpeed = 1;
+let listeningMcqRevealed = false;
+let vocabSet = [];
+let vocabIndex = 0;
+let vocabCorrect = 0;
+let vocabMistakes = [];
+let vocabAnswered = false;
+let reading = null;
+let writingSet = [];
+let writingIndex = 0;
+let writingCorrect = 0;
+let writingMistakes = [];
+let writingAnswered = false;
 
-app.use(express.json({ limit: "1mb" }));
-app.use(express.static(path.join(__dirname, "public")));
+const STORAGE_KEY = "englishTrainerV2Progress";
+const VOCAB_HISTORY_KEY = "englishTrainerV2VocabHistory";
+const VOCAB_HISTORY_LIMIT = 1000;
+const LISTENING_HISTORY_KEY = "englishTrainerV2ListeningHistory";
+const LISTENING_HISTORY_LIMIT = 20;
+const VOCAB_MASTERY_KEY = "englishTrainerV3VocabMastery";
 
-function requireKey(req,res,next){if(!OPENAI_API_KEY)return res.status(500).json({error:"OPENAI_API_KEY が設定されていません。"});next();}
-function outputText(data){if(typeof data.output_text==="string")return data.output_text;return(data.output||[]).flatMap(i=>i.content||[]).filter(i=>i.type==="output_text").map(i=>i.text||"").join("\n");}
-function parseJson(text){return JSON.parse(String(text||"").replace(/^```json\s*/i,"").replace(/^```\s*/i,"").replace(/\s*```$/i,"").trim());}
-async function generateJson(prompt){const r=await fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{Authorization:`Bearer ${OPENAI_API_KEY}`,"Content-Type":"application/json"},body:JSON.stringify({model:"gpt-5.6-luna",input:prompt,reasoning:{effort:"none"}})});const data=await r.json();if(!r.ok)throw new Error(data.error?.message||"OpenAI API error");return parseJson(outputText(data));}
-
-function answerIndex(q){const n=Number(q.answer_index);return Number.isInteger(n)&&n>=0&&n<=3?n:null;}
-function validateQuestions(qs,expected){if(!Array.isArray(qs)||qs.length!==expected)throw new Error("問題の生成形式が不正でした。");for(const q of qs){if(!Array.isArray(q.options)||q.options.length!==4)throw new Error("選択肢の生成形式が不正でした。");const n=answerIndex(q);if(n===null)throw new Error("answer_index が不正です。");q.answer_index=n;}}
-function hasJapanese(t){return/[\u3040-\u30ff\u3400-\u9fff]/u.test(String(t||""));}
-function hasLatin(t){return/[A-Za-z]/.test(String(t||""));}
-function normalizeWord(t){return String(t||"").trim().toLowerCase().replace(/[’']/g,"'").replace(/[^a-z0-9' -]/g,"").replace(/\s+/g," ").trim();}
-function looksEnglish(t){const s=String(t||"").trim();return s&&hasLatin(s)&&!hasJapanese(s);}
-function looksJapanese(t){const s=String(t||"").trim();return s&&hasJapanese(s);}
-
-function validateVocabCandidate({rawQuestion,mode,expectedSource,recentSet,eligibleWeakSet,cooldownSet,selectedSet,masteredSet}){
-  try{
-    const q=rawQuestion||{};const prompt=String(q.prompt||"").trim(),context=String(q.context||"").trim(),word=String(q.word||"").trim(),meaning_ja=String(q.meaning_ja||"").trim(),explanation_ja=String(q.explanation_ja||"").trim();const options=Array.isArray(q.options)?q.options.map(x=>String(x||"").trim()):[];const key=normalizeWord(word),ai=answerIndex(q);
-    if(!word||!key)throw new Error("word is empty");if(selectedSet.has(key))throw new Error(`duplicate in current set: ${word}`);if(masteredSet.has(key))throw new Error(`mastered word: ${word}`);if(options.length!==4||new Set(options.map(x=>x.toLowerCase())).size!==4)throw new Error("invalid options");if(ai===null)throw new Error("invalid answer_index");
-    if(mode==="blank"){if((prompt.match(/_____/g)||[]).length!==1||!hasLatin(prompt)||hasJapanese(prompt))throw new Error("invalid blank prompt");if(!options.every(looksEnglish))throw new Error("blank options must be English");if(normalizeWord(options[ai])!==key)throw new Error("blank correct option mismatch");}
-    if(mode==="en-ja"){if(!hasLatin(prompt)||hasJapanese(prompt)||normalizeWord(prompt)!==key)throw new Error("invalid en-ja prompt");if(!options.every(looksJapanese))throw new Error("en-ja options must be Japanese");}
-    if(mode==="ja-en"){if(!hasJapanese(prompt))throw new Error("invalid ja-en prompt");if(!options.every(looksEnglish))throw new Error("ja-en options must be English");if(normalizeWord(options[ai])!==key)throw new Error("ja-en correct option mismatch");}
-    if(expectedSource==="new"&&recentSet.has(key))throw new Error(`recent word: ${word}`);if(expectedSource==="review"&&(!eligibleWeakSet.has(key)||cooldownSet.has(key)))throw new Error(`review unavailable: ${word}`);
-    return{ok:true,question:{prompt,context,options,answer_index:ai,word,meaning_ja,explanation_ja,source:expectedSource}};
-  }catch(e){return{ok:false,reason:e.message};}
+function escapeHtml(s) {
+  return String(s ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
 }
 
-const LISTENING_RANDOM_CATEGORIES=[
-  ["restaurant","restaurant, cafe, ordering food, or making a reservation"],["work","workplace, meeting, coworker, deadline, or office communication"],["shopping","shopping, returning an item, asking about a product, or paying"],["hotel","hotel, check-in, check-out, room request, or accommodation"],["school","school, class, studying, assignment, or campus life"],["health","health, pharmacy, clinic, appointment, or describing a minor symptom"],["home","home, household task, cooking, cleaning, or a small problem at home"],["friends","friends, making plans, changing plans, invitation, or social activity"],["phone","phone call, voicemail, message, or contacting someone"],["delivery","delivery, package, online order, receiving an item, or shipping"],["bank","banking, payment, ATM, bill, or simple financial service"],["event","event, concert, museum, movie, ticket, or public activity"],["travel","travel planning, sightseeing, airport, luggage, or tourist information"],["transport","public transportation, train, bus, taxi, station, or route"],["weather","weather, changing plans because of weather, or preparing for conditions"],["service","customer service, asking for help, making a request, or solving a service problem"],["appointment","appointment, schedule, rescheduling, or confirming a time"],["technology","computer, smartphone, internet, simple technical problem, or online service"],["neighborhood","neighborhood, local facility, asking for directions, or community activity"],["daily","ordinary daily life, errands, routine plans, or a small everyday decision"]
-].map(([id,label])=>({id,label}));
-let recentRandomCategories=[];
-function chooseListeningCategory(){const blocked=new Set(recentRandomCategories.slice(-5));let c=LISTENING_RANDOM_CATEGORIES.filter(x=>!blocked.has(x.id));if(!c.length)c=LISTENING_RANDOM_CATEGORIES;const s=c[Math.floor(Math.random()*c.length)];recentRandomCategories=[...recentRandomCategories,s.id].slice(-20);return s;}
-
-app.post("/api/listening",requireKey,async(req,res)=>{try{
-  const mode=String(req.body.mode||"dictation"),level=String(req.body.level||"B1"),requestedTopic=String(req.body.topic||"Random"),length=String(req.body.length||"short");const recent=Array.isArray(req.body.recentListening)?req.body.recentListening.map(x=>String(x||"").trim()).filter(Boolean).slice(-20):[];const veryRecent=recent.slice(-5);let actualTopic=requestedTopic;let selected=null;if(requestedTopic.trim().toLowerCase()==="random"){selected=chooseListeningCategory();actualTopic=selected.label;}const lengthRule=length==="short"?"8-14 words":length==="medium"?"15-28 words":"29-50 words";const recentText=recent.length?recent.map((x,i)=>`${i+1}. ${x}`).join("\n"):"(none)";const recent5=veryRecent.length?veryRecent.map((x,i)=>`${i+1}. ${x}`).join("\n"):"(none)";
-  const variety=`Actual scenario category: ${actualTopic}\nRecent exercises:\n${recentText}\nFive most recent:\n${recent5}\nRules: do not repeat the same underlying event, location+problem+goal+outcome, or communicative purpose. Missing a bus/train/subway all count as essentially the same scenario. Keep it natural and realistic. If Random, use the selected category but create a fresh situation.`;
-  const prompt=mode==="mcq"?`Create ONE English listening comprehension exercise for a Japanese learner. CEFR ${level}. Length ${lengthRule}. ${variety}\nReturn ONLY JSON: {"sentence":"...","translation":"...","listening_tip":"...","scenario":"...","questions":[{"question":"...","options":["A","B","C","D"],"answer_index":0,"explanation_ja":"..."},{"question":"...","options":["A","B","C","D"],"answer_index":1,"explanation_ja":"..."},{"question":"...","options":["A","B","C","D"],"answer_index":2,"explanation_ja":"..."}]} Exactly 3 questions, 4 English options each, answers supported by audio, natural CEFR ${level}, no markdown.`:`Create ONE English listening exercise for a Japanese learner. CEFR ${level}. Length ${lengthRule}. ${variety}\nReturn ONLY JSON: {"sentence":"...","translation":"...","listening_tip":"...","scenario":"..."}. Natural useful CEFR ${level}, no markdown.`;
-  let data,last;for(let i=0;i<2;i++){try{data=await generateJson(prompt);if(!data?.sentence)throw new Error("Listening英文が生成されませんでした。");if(mode==="mcq")validateQuestions(data.questions,3);break;}catch(e){data=null;last=e;}}
-  if(!data)throw last||new Error("Listening問題の生成に失敗しました。");res.json(data);
-}catch(e){console.error(e);res.status(500).json({error:e.message||"問題作成に失敗しました。"});}});
-
-const VOCAB_POOLS = {
-  "A1": [
-    "accept",
-    "answer",
-    "arrive",
-    "ask",
-    "beautiful",
-    "begin",
-    "believe",
-    "borrow",
-    "bring",
-    "build",
-    "busy",
-    "buy",
-    "call",
-    "carry",
-    "change",
-    "cheap",
-    "choose",
-    "clean",
-    "close",
-    "cold",
-    "come",
-    "cook",
-    "correct",
-    "cost",
-    "dance",
-    "decide",
-    "different",
-    "difficult",
-    "drink",
-    "drive",
-    "early",
-    "easy",
-    "eat",
-    "enjoy",
-    "expensive",
-    "explain",
-    "family",
-    "fast",
-    "favorite",
-    "find",
-    "finish",
-    "food",
-    "forget",
-    "friend",
-    "give",
-    "good",
-    "happy",
-    "help",
-    "important",
-    "interesting",
-    "invite",
-    "kind",
-    "know",
-    "late",
-    "learn",
-    "leave",
-    "listen",
-    "live",
-    "look",
-    "love",
-    "make",
-    "meet",
-    "need",
-    "new",
-    "open",
-    "order",
-    "pay",
-    "play",
-    "practice",
-    "read",
-    "remember",
-    "repeat",
-    "restaurant",
-    "right",
-    "run",
-    "say",
-    "school",
-    "sell",
-    "send",
-    "shop",
-    "short",
-    "show",
-    "slow",
-    "small",
-    "speak",
-    "start",
-    "stay",
-    "stop",
-    "study",
-    "take",
-    "talk",
-    "teach",
-    "tell",
-    "think",
-    "travel",
-    "try",
-    "understand",
-    "use",
-    "visit",
-    "wait",
-    "walk",
-    "want",
-    "watch",
-    "work",
-    "write",
-    "wrong",
-    "young",
-    "above",
-    "across",
-    "action",
-    "activity",
-    "adult",
-    "afternoon",
-    "again",
-    "age",
-    "ago",
-    "air",
-    "airport",
-    "all",
-    "almost",
-    "along",
-    "always",
-    "animal",
-    "another",
-    "anyone",
-    "anything",
-    "apartment",
-    "apple",
-    "area",
-    "arm",
-    "around",
-    "art",
-    "baby",
-    "back",
-    "bad",
-    "bag",
-    "bank",
-    "bathroom",
-    "beach",
-    "because",
-    "become",
-    "bed",
-    "bedroom",
-    "before",
-    "behind",
-    "below",
-    "best",
-    "better",
-    "bicycle",
-    "big",
-    "bird",
-    "birthday",
-    "black",
-    "blue",
-    "boat",
-    "body",
-    "book",
-    "bottle",
-    "box",
-    "boy",
-    "bread",
-    "breakfast",
-    "brother",
-    "brown",
-    "bus",
-    "business",
-    "cake",
-    "camera",
-    "car",
-    "card",
-    "cat",
-    "chair",
-    "child",
-    "city",
-    "class",
-    "clock",
-    "clothes",
-    "coffee",
-    "color",
-    "computer",
-    "country",
-    "course",
-    "cousin",
-    "cup",
-    "cut",
-    "day",
-    "dear",
-    "desk",
-    "dinner",
-    "doctor",
-    "dog",
-    "door",
-    "down",
-    "draw",
-    "dress",
-    "east",
-    "egg",
-    "eight",
-    "eleven",
-    "evening",
-    "every",
-    "everyone",
-    "everything",
-    "example",
-    "eye",
-    "face",
-    "far",
-    "farm",
-    "father",
-    "feel",
-    "few",
-    "fifteen",
-    "fifty",
-    "film",
-    "fine",
-    "fire",
-    "first",
-    "fish",
-    "five",
-    "floor",
-    "flower",
-    "foot",
-    "four",
-    "free",
-    "friday",
-    "front",
-    "fruit",
-    "full",
-    "fun",
-    "game",
-    "garden",
-    "get",
-    "girl",
-    "glass",
-    "go",
-    "grandfather",
-    "grandmother",
-    "great",
-    "green",
-    "group",
-    "grow",
-    "guess",
-    "guitar",
-    "hair",
-    "half",
-    "hand",
-    "happen",
-    "hard",
-    "have",
-    "hear",
-    "hello",
-    "here",
-    "high",
-    "history",
-    "hobby",
-    "holiday",
-    "home",
-    "horse",
-    "hospital",
-    "hot",
-    "hotel",
-    "hour",
-    "house",
-    "how",
-    "hundred",
-    "hungry",
-    "idea",
-    "in",
-    "inside",
-    "interest",
-    "internet",
-    "job",
-    "juice",
-    "jump",
-    "keep",
-    "key",
-    "kitchen",
-    "lake",
-    "language",
-    "large",
-    "last",
-    "left",
-    "leg",
-    "lesson",
-    "library",
-    "light",
-    "like",
-    "line",
-    "little",
-    "long",
-    "lunch",
-    "man",
-    "many",
-    "map",
-    "market",
-    "meal",
-    "milk",
-    "minute",
-    "monday",
-    "money",
-    "month",
-    "morning",
-    "mother",
-    "mountain",
-    "movie",
-    "much",
-    "music",
-    "name",
-    "near",
-    "never",
-    "next",
-    "nice",
-    "night",
-    "nine",
-    "nineteen",
-    "ninety",
-    "north",
-    "number",
-    "nurse",
-    "office",
-    "often",
-    "old",
-    "once",
-    "one",
-    "orange",
-    "outside",
-    "page",
-    "paper",
-    "parent",
-    "park",
-    "party",
-    "pen",
-    "people",
-    "person",
-    "phone",
-    "photo",
-    "picture",
-    "place",
-    "please",
-    "police",
-    "pool",
-    "poor",
-    "popular",
-    "possible",
-    "price",
-    "problem",
-    "question",
-    "quick",
-    "quiet",
-    "radio",
-    "ready",
-    "red",
-    "rice",
-    "river",
-    "road",
-    "room",
-    "sad",
-    "saturday",
-    "sea",
-    "seat",
-    "second",
-    "see",
-    "seven",
-    "seventeen",
-    "seventy",
-    "sister",
-    "six",
-    "sixteen",
-    "sixty",
-    "sleep",
-    "snow",
-    "sometimes",
-    "song",
-    "soon",
-    "south",
-    "sport",
-    "spring",
-    "stand",
-    "station",
-    "store",
-    "street",
-    "strong",
-    "student",
-    "summer",
-    "sunday",
-    "swim",
-    "table",
-    "tall",
-    "tea",
-    "teacher",
-    "ten",
-    "tennis",
-    "thank",
-    "thing",
-    "thirsty",
-    "thirteen",
-    "thirty",
-    "three",
-    "thursday",
-    "ticket",
-    "time",
-    "tired",
-    "today",
-    "together",
-    "tomorrow",
-    "town",
-    "train",
-    "tree",
-    "trip",
-    "tuesday",
-    "twelve",
-    "twenty",
-    "two",
-    "uncle",
-    "under",
-    "vegetable",
-    "very",
-    "village",
-    "wall",
-    "warm",
-    "water",
-    "way",
-    "wednesday",
-    "week",
-    "weekend",
-    "well",
-    "west",
-    "white",
-    "wife",
-    "window",
-    "winter",
-    "woman",
-    "word",
-    "year",
-    "yellow",
-    "yes",
-    "yesterday",
-    "actor",
-    "address",
-    "airplane",
-    "aunt",
-    "autumn",
-    "ball",
-    "banana",
-    "blanket",
-    "building",
-    "capital",
-    "chicken",
-    "chocolate",
-    "cinema",
-    "classroom",
-    "coat",
-    "cow",
-    "customer",
-    "daughter",
-    "driver",
-    "ear",
-    "factory",
-    "farmer",
-    "football",
-    "forest",
-    "fork",
-    "hat",
-    "head",
-    "husband",
-    "island",
-    "jacket",
-    "letter",
-    "machine",
-    "mouse",
-    "mouth",
-    "museum",
-    "newspaper",
-    "paint",
-    "pencil",
-    "plane",
-    "plant",
-    "plate",
-    "pocket",
-    "potato",
-    "at home",
-    "at school",
-    "at work",
-    "in the morning",
-    "in the afternoon",
-    "in the evening",
-    "at night",
-    "on Monday",
-    "on Tuesday",
-    "on Wednesday",
-    "on Thursday",
-    "on Friday",
-    "on Saturday",
-    "on Sunday",
-    "go home",
-    "go shopping",
-    "go swimming",
-    "go running",
-    "go walking",
-    "go fishing",
-    "go camping",
-    "go skiing",
-    "go to school",
-    "go to work",
-    "go to bed",
-    "go to the park",
-    "go to the beach",
-    "go to the station",
-    "come home",
-    "come back",
-    "sit down",
-    "stand up",
-    "get up",
-    "wake up",
-    "look at",
-    "listen to",
-    "talk to",
-    "speak to",
-    "wait for",
-    "ask for",
-    "pay for",
-    "play soccer",
-    "play tennis",
-    "play baseball",
-    "play basketball",
-    "play the piano",
-    "play the guitar",
-    "watch TV",
-    "watch a movie",
-    "read a book",
-    "read a newspaper",
-    "have breakfast",
-    "have lunch",
-    "have dinner",
-    "have a shower",
-    "have a bath",
-    "take a bus",
-    "take a train",
-    "take a taxi",
-    "take a photo",
-    "turn left",
-    "turn right",
-    "next to",
-    "in front of",
-    "under the table",
-    "on the table",
-    "a lot of",
-    "a little",
-    "a few",
-    "every day",
-    "every week",
-    "every month",
-    "every year",
-    "how much",
-    "how many",
-    "what time",
-    "what kind",
-    "this morning",
-    "this afternoon",
-    "this evening",
-    "right now",
-    "of course",
-    "thank you",
-    "excuse me",
-    "good morning",
-    "good afternoon",
-    "good evening",
-    "good night",
-    "see you",
-    "take care",
-    "welcome back",
-    "happy birthday",
-    "have fun",
-    "world",
-    "end",
-    "main",
-    "part",
-    "put",
-    "past",
-    "low",
-    "rain",
-    "team",
-    "soap",
-    "copy",
-    "middle",
-    "life",
-    "file",
-    "size",
-    "wide",
-    "top",
-    "pick",
-    "sign",
-    "gate",
-    "baseball",
-    "engine",
-    "sale",
-    "set",
-    "drop",
-    "ship",
-    "unit",
-    "online",
-    "couple",
-    "display",
-    "cheese",
-    "television",
-    "tonight",
-    "fill",
-    "piece",
-    "gas",
-    "real",
-    "title",
-    "hold",
-    "tub",
-    "level",
-    "join",
-    "oil",
-    "code",
-    "downtown",
-    "wish",
-    "lose",
-    "percent",
-    "bit",
-    "press",
-    "act",
-    "sort",
-    "source",
-    "running",
-    "lower",
-    "test",
-    "ice",
-    "rare",
-    "bottom",
-    "ski",
-    "list",
-    "skin",
-    "space",
-    "cover",
-    "raise",
-    "remove",
-    "wear",
-    "side",
-    "soup",
-    "hall",
-    "gold",
-    "cream",
-    "boots",
-    "metal",
-    "vote",
-    "law",
-    "umbrellas",
-    "king",
-    "cell",
-    "sheet",
-    "huge",
-    "pet",
-    "spot",
-    "ride",
-    "knife",
-    "view",
-    "sun",
-    "storm",
-    "daily",
-    "windows",
-    "silver",
-    "reply",
-    "step",
-    "text",
-    "fix",
-    "player",
-    "dishes",
-    "carpet",
-    "flowers",
-    "grades",
-    "fog",
-    "pickup",
-    "diet",
-    "shoe",
-    "sight",
-    "soil",
-    "taste",
-    "collar",
-    "pound",
-    "sugar",
-    "mile",
-    "suit",
-    "land",
-    "trail",
-    "band",
-    "load",
-    "race",
-    "wing",
-    "coast",
-    "leather",
-    "vacuum",
-    "sandy",
-    "wood",
-    "paragraph",
-    "heat",
-    "fly",
-    "gym",
-    "luggage",
-    "fat",
-    "roast",
-    "host",
-    "fee",
-    "danger",
-    "noon",
-    "dry",
-    "task",
-    "audio",
-    "voice",
-    "sweater",
-    "touch",
-    "van",
-    "style",
-    "deep",
-    "edge",
-    "court",
-    "campus",
-    "mine",
-    "excuse",
-    "restroom",
-    "leader",
-    "guard",
-    "post",
-    "chip",
-    "brush",
-    "trash",
-    "sweep",
-    "sick",
-    "hurry",
-    "pizza",
-    "heart",
-    "jet",
-    "bar",
-    "tooth",
-    "wash",
-    "wet",
-    "baggage",
-    "soft",
-    "bay",
-    "rainbow",
-    "cafe",
-    "spray",
-    "ring",
-    "bowls",
-    "fuel",
-    "clerk",
-    "grand",
-    "frozen",
-    "globe",
-    "coins",
-    "fries",
-    "fresh",
-    "fight",
-    "ink",
-    "novel",
-    "self",
-    "popcorn",
-    "plastic",
-    "oven",
-    "lock",
-    "kids",
-    "stove",
-    "subway",
-    "stone",
-    "thin",
-    "toaster",
-    "wind",
-    "wheel",
-    "flash",
-    "flat",
-    "foam",
-    "flood",
-    "elder",
-    "odd",
-    "phrase",
-    "listening",
-    "lecture",
-    "illness",
-    "painting",
-    "physical",
-    "input",
-    "guide",
-    "ideal",
-    "honest",
-    "opposite",
-    "mild",
-    "tool",
-    "solid",
-    "secret",
-    "salad",
-    "square",
-    "shadow",
-    "star",
-    "proud",
-    "search",
-    "raw",
-    "soda",
-    "valley",
-    "beauty",
-    "upset",
-    "camp",
-    "bear",
-    "trust",
-    "bean",
-    "bow",
-    "weak",
-    "glance",
-    "artificial",
-    "commuter",
-    "continent",
-    "founder",
-    "depart",
-    "permanent",
-    "string",
-    "toll",
-    "loose",
-    "neat",
-    "plenty",
-    "desire",
-    "barn",
-    "garbage",
-    "portable",
-    "blank",
-    "pale",
-    "removal",
-    "eatery",
-    "injury",
-    "bride",
-    "decent",
-    "envelope",
-    "script",
-    "aloud",
-    "journal",
-    "petrol",
-    "transit",
-    "garment",
-    "workday",
-    "rural",
-    "grain",
-    "treat",
-    "somewhere",
-    "pleasure",
-    "formerly",
-    "sleek",
-    "funny",
-    "herb",
-    "melt",
-    "infant",
-    "guilty",
-    "harmful",
-    "courage",
-    "fur",
-    "dull",
-    "cheek",
-    "treasure",
-    "grave",
-    "lung",
-    "silly",
-    "stupid",
-    "burst",
-    "pregnant",
-    "genius",
-    "shame",
-    "yell",
-    "keen",
-    "appetite",
-    "crop",
-    "clue",
-    "insect",
-    "sum",
-    "desert",
-    "tongue",
-    "suffer",
-    "hunger",
-    "plain",
-    "tone",
-    "fate",
-    "fortune",
-    "blink",
-    "cave",
-    "knot",
-    "awful",
-    "grin",
-    "throat",
-    "fellow",
-    "bang",
-    "palm",
-    "sigh",
-    "gaze",
-    "fade",
-    "whisper",
-    "tiny",
-    "traffic jam",
-    "stir",
-    "avenue",
-    "cure",
-    "beg",
-    "hang",
-    "stare",
-    "quit",
-    "blow",
-    "cutlery",
-    "pavement",
-    "mend",
-    "spouse",
-    "fluid",
-    "scold",
-    "carve",
-    "belly",
-    "amid",
-    "crawl",
-    "oxygen",
-    "sticky",
-    "peel",
-    "flip",
-    "blaze",
-    "bundle",
-    "cape",
-    "stiff",
-    "faint",
-    "shallow",
-    "stadium",
-    "cage",
-    "rack",
-    "copper",
-    "bug",
-    "damp",
-    "bush",
-    "dim",
-    "thigh",
-    "bull",
-    "cab",
-    "jar",
-    "cliff",
-    "flu",
-    "alley",
-    "heal",
-    "fever",
-    "hay",
-    "backyard",
-    "heap",
-    "herd",
-    "outfit",
-    "horizon",
-    "scent",
-    "eyebrow",
-    "sack",
-    "lick",
-    "chunk",
-    "feather",
-    "pat",
-    "sole",
-    "weed",
-    "streak",
-    "sleeve",
-    "rib",
-    "halfway",
-    "pastime",
-    "cemetery",
-    "pasture",
-    "rim",
-    "chill",
-    "lid",
-    "sprinkle",
-    "widow",
-    "poke",
-    "thread",
-    "scar",
-    "screw",
-    "warmth",
-    "shiny",
-    "sneeze",
-    "frown",
-    "sob",
-    "rubber",
-    "sow",
-    "spark",
-    "marble",
-    "swift",
-    "torch",
-    "cue",
-    "twilight",
-    "dock",
-    "ward",
-    "spit",
-    "kneel",
-    "bald",
-    "beak",
-    "blot",
-    "brook",
-    "broom",
-    "canyon",
-    "chilly",
-    "cozy",
-    "dew",
-    "ditch",
-    "dizzy",
-    "fable",
-    "faraway",
-    "fling",
-    "fuss",
-    "fuzzy",
-    "gateway",
-    "gem",
-    "graze",
-    "lease",
-    "blend",
-    "greeting",
-    "quest",
-    "log",
-    "quote",
-    "path",
-    "porch",
-    "household",
-    "entry",
-    "grocery",
-    "lab",
-    "refrigerator",
-    "shade",
-    "arena",
-    "kettle",
-    "dirt",
-    "crisp",
-    "crowd",
-    "flow",
-    "ash",
-    "upstairs",
-    "scene",
-    "bite",
-    "faith",
-    "feed",
-    "debt",
-    "timber",
-    "query",
-    "cupboard",
-    "drawer",
-    "charm",
-    "vent",
-    "ceiling",
-    "proof",
-    "slip",
-    "ore",
-    "pour",
-    "pond",
-    "crack",
-    "iris",
-    "purse",
-    "wheat",
-    "stain",
-    "blame",
-    "greet",
-    "saving",
-    "obey",
-    "polish",
-    "tie",
-    "boost",
-    "plug",
-    "sew",
-    "lean",
-    "bond",
-    "army",
-    "mate",
-    "lord",
-    "weapon",
-    "rebel",
-    "crate",
-    "bomb",
-    "inlet",
-    "heaven",
-    "leap",
-    "church",
-    "palace",
-    "prayer",
-    "stem",
-    "skid",
-    "prey",
-    "pulp",
-    "flame",
-    "aid",
-    "pump",
-    "row",
-    "stick",
-    "tale",
-    "nod",
-    "fold",
-    "fetch",
-    "bloom",
-    "parcel",
-    "site",
-    "be able to",
-    "let",
-    "tip",
-    "flyer"
-  ],
-  "A2": [
-    "advice",
-    "agree",
-    "allow",
-    "alone",
-    "already",
-    "appear",
-    "appointment",
-    "avoid",
-    "careful",
-    "certain",
-    "chance",
-    "comfortable",
-    "communicate",
-    "compare",
-    "complain",
-    "complete",
-    "continue",
-    "conversation",
-    "crowded",
-    "dangerous",
-    "describe",
-    "difference",
-    "direction",
-    "during",
-    "environment",
-    "especially",
-    "event",
-    "experience",
-    "famous",
-    "finally",
-    "future",
-    "healthy",
-    "improve",
-    "include",
-    "information",
-    "instead",
-    "introduce",
-    "journey",
-    "local",
-    "message",
-    "mistake",
-    "necessary",
-    "notice",
-    "opinion",
-    "perhaps",
-    "plan",
-    "prefer",
-    "prepare",
-    "promise",
-    "receive",
-    "recommend",
-    "repair",
-    "return",
-    "safe",
-    "save",
-    "seem",
-    "share",
-    "should",
-    "simple",
-    "spend",
-    "suggest",
-    "surprise",
-    "traffic",
-    "usual",
-    "vacation",
-    "weather",
-    "without",
-    "worry",
-    "afraid",
-    "available",
-    "cancel",
-    "care",
-    "contact",
-    "deliver",
-    "discover",
-    "enter",
-    "excited",
-    "friendly",
-    "miss",
-    "offer",
-    "organize",
-    "polite",
-    "reason",
-    "reserve",
-    "schedule",
-    "service",
-    "special",
-    "successful",
-    "traditional",
-    "useful",
-    "visitor",
-    "able",
-    "abroad",
-    "accident",
-    "account",
-    "after",
-    "against",
-    "ahead",
-    "although",
-    "amazing",
-    "ambulance",
-    "angry",
-    "article",
-    "artist",
-    "attention",
-    "away",
-    "belong",
-    "beside",
-    "break",
-    "bridge",
-    "burn",
-    "calm",
-    "center",
-    "century",
-    "check",
-    "choice",
-    "climb",
-    "cloud",
-    "collect",
-    "common",
-    "company",
-    "concert",
-    "corner",
-    "count",
-    "countryside",
-    "culture",
-    "dark",
-    "date",
-    "dead",
-    "dictionary",
-    "each",
-    "earth",
-    "education",
-    "else",
-    "enough",
-    "ever",
-    "exam",
-    "excellent",
-    "except",
-    "exercise",
-    "festival",
-    "flight",
-    "follow",
-    "foreign",
-    "form",
-    "gift",
-    "glad",
-    "ground",
-    "heavy",
-    "helpful",
-    "hope",
-    "however",
-    "immediately",
-    "interested",
-    "later",
-    "lovely",
-    "lucky",
-    "magazine",
-    "mail",
-    "match",
-    "medicine",
-    "modern",
-    "moment",
-    "move",
-    "news",
-    "note",
-    "nothing",
-    "ocean",
-    "over",
-    "own",
-    "pair",
-    "passenger",
-    "present",
-    "pretty",
-    "probably",
-    "public",
-    "railway",
-    "reach",
-    "report",
-    "round",
-    "same",
-    "science",
-    "season",
-    "since",
-    "sing",
-    "sky",
-    "something",
-    "still",
-    "story",
-    "straight",
-    "strange",
-    "subject",
-    "suddenly",
-    "sure",
-    "temperature",
-    "than",
-    "theater",
-    "turn",
-    "until",
-    "welcome",
-    "while",
-    "adventure",
-    "album",
-    "assistant",
-    "bakery",
-    "balcony",
-    "battery",
-    "bill",
-    "booking",
-    "broken",
-    "campsite",
-    "captain",
-    "cartoon",
-    "cash",
-    "cashier",
-    "cereal",
-    "channel",
-    "chef",
-    "chess",
-    "club",
-    "coach",
-    "college",
-    "competition",
-    "cooker",
-    "diary",
-    "discount",
-    "dream",
-    "elevator",
-    "email",
-    "entrance",
-    "exhibition",
-    "exit",
-    "fair",
-    "fridge",
-    "garage",
-    "geography",
-    "glove",
-    "guest",
-    "haircut",
-    "invitation",
-    "keyboard",
-    "lamp",
-    "laptop",
-    "laundry",
-    "lift",
-    "manager",
-    "mirror",
-    "mobile",
-    "neighbor",
-    "noise",
-    "notebook",
-    "package",
-    "painter",
-    "parking",
-    "passport",
-    "pharmacy",
-    "picnic",
-    "pillow",
-    "platform",
-    "postcard",
-    "prize",
-    "recipe",
-    "receptionist",
-    "reservation",
-    "roommate",
-    "route",
-    "sandwich",
-    "screen",
-    "shelf",
-    "shower",
-    "suitcase",
-    "supermarket",
-    "swimming",
-    "taxi",
-    "toothbrush",
-    "towel",
-    "tourist",
-    "umbrella",
-    "uniform",
-    "wallet",
-    "washing",
-    "website",
-    "wedding",
-    "weekday",
-    "wheelchair",
-    "ability",
-    "active",
-    "actually",
-    "apologize",
-    "argue",
-    "attack",
-    "catch",
-    "distance",
-    "manage",
-    "look for",
-    "look after",
-    "look around",
-    "look like",
-    "look out",
-    "look up",
-    "pick up",
-    "put on",
-    "take off",
-    "turn on",
-    "turn off",
-    "get on",
-    "get off",
-    "get in",
-    "get out",
-    "come in",
-    "come out",
-    "go out",
-    "go away",
-    "go back",
-    "find out",
-    "fill in",
-    "fill out",
-    "write down",
-    "call back",
-    "ask about",
-    "talk about",
-    "think about",
-    "worry about",
-    "look forward to",
-    "be afraid of",
-    "be interested in",
-    "be good at",
-    "be bad at",
-    "be famous for",
-    "be late for",
-    "be ready for",
-    "be different from",
-    "be friendly to",
-    "be kind to",
-    "be careful with",
-    "be worried about",
-    "take care of",
-    "take part in",
-    "have a good time",
-    "have a rest",
-    "have a look",
-    "make a mistake",
-    "make a plan",
-    "make a reservation",
-    "make a phone call",
-    "take a break",
-    "take a trip",
-    "take a walk",
-    "take a seat",
-    "catch a bus",
-    "catch a train",
-    "miss a bus",
-    "miss a train",
-    "on time",
-    "in time",
-    "for example",
-    "for a while",
-    "at first",
-    "at last",
-    "at the moment",
-    "in the future",
-    "in the past",
-    "once a week",
-    "twice a day",
-    "by bus",
-    "by train",
-    "by car",
-    "by bike",
-    "on foot",
-    "as soon as",
-    "more than",
-    "less than",
-    "the same as",
-    "each other",
-    "one another",
-    "something else",
-    "somewhere else",
-    "all over the world",
-    "on the way",
-    "in the end",
-    "several",
-    "sales",
-    "quite",
-    "board",
-    "staff",
-    "president",
-    "system",
-    "ad",
-    "announcement",
-    "program",
-    "secretary",
-    "university",
-    "current",
-    "project",
-    "purchase",
-    "major",
-    "tour",
-    "telephone",
-    "memo",
-    "product",
-    "furniture",
-    "truck",
-    "golf",
-    "extra",
-    "contract",
-    "lost",
-    "thought",
-    "previous",
-    "software",
-    "state",
-    "fact",
-    "human",
-    "credit",
-    "advertisement",
-    "case",
-    "wonderful",
-    "vehicle",
-    "Christmas",
-    "serious",
-    "power",
-    "quickly",
-    "charge",
-    "diamond",
-    "clear",
-    "single",
-    "fax",
-    "refund",
-    "director",
-    "carefully",
-    "bluetooth",
-    "currently",
-    "directly",
-    "particular",
-    "simply",
-    "recently",
-    "natural",
-    "manual",
-    "employee",
-    "period",
-    "field",
-    "range",
-    "western",
-    "electric",
-    "easily",
-    "container",
-    "mean",
-    "clearly",
-    "claim",
-    "precious",
-    "seldom",
-    "final",
-    "district",
-    "region",
-    "addition",
-    "limited",
-    "unique",
-    "digital",
-    "safety",
-    "control",
-    "salary",
-    "fairly",
-    "further",
-    "spread",
-    "concerned",
-    "worker",
-    "negative",
-    "despite",
-    "worth",
-    "fewer",
-    "degrees",
-    "properly",
-    "expense",
-    "user",
-    "million",
-    "rate",
-    "basic",
-    "nearly",
-    "section",
-    "total",
-    "original",
-    "toward",
-    "elementary",
-    "award",
-    "recycling",
-    "monthly",
-    "upcoming",
-    "clothing",
-    "former",
-    "animals",
-    "double",
-    "entertainment",
-    "sincerely",
-    "cafeteria",
-    "boring",
-    "handle",
-    "beyond",
-    "terrible",
-    "individual",
-    "printer",
-    "medium",
-    "pleased",
-    "ferry",
-    "unable",
-    "smoke",
-    "details",
-    "minimum",
-    "perfect",
-    "direct",
-    "statement",
-    "comfort",
-    "worried",
-    "microwave",
-    "odor",
-    "gain",
-    "hire",
-    "fail",
-    "residents",
-    "stock",
-    "severe",
-    "cheaper",
-    "gather",
-    "electronic",
-    "automobile",
-    "member",
-    "instructions",
-    "register",
-    "inform",
-    "nation",
-    "sooner",
-    "select",
-    "generally",
-    "license",
-    "speed",
-    "review",
-    "eastern",
-    "devices",
-    "missing",
-    "force",
-    "rise",
-    "bonus",
-    "speech",
-    "rest",
-    "fall",
-    "motorcycle",
-    "base",
-    "clay",
-    "whole",
-    "transfer",
-    "alike",
-    "committee",
-    "regularly",
-    "fantastic",
-    "error",
-    "recall",
-    "record",
-    "cruise",
-    "senior",
-    "relatively",
-    "apparently",
-    "annual",
-    "electricity",
-    "series",
-    "shipment",
-    "assistance",
-    "sense",
-    "payment",
-    "length",
-    "win",
-    "assist",
-    "brand",
-    "anyway",
-    "learning",
-    "cleaner",
-    "brochure",
-    "rent",
-    "absolutely",
-    "inexpensive",
-    "otherwise",
-    "airline",
-    "storage",
-    "pressure",
-    "normal",
-    "private",
-    "delicious",
-    "sentence",
-    "flavor",
-    "dialog",
-    "respect",
-    "reasonable",
-    "contain",
-    "membership",
-    "operate",
-    "classical",
-    "advanced",
-    "agenda",
-    "electronics",
-    "earthquake",
-    "technician",
-    "attendant",
-    "trade",
-    "subscription",
-    "adults",
-    "departure",
-    "shuttle",
-    "confused",
-    "measures",
-    "honor",
-    "freeway",
-    "highway",
-    "obvious",
-    "immediate",
-    "satellite",
-    "expenses",
-    "recording",
-    "hygiene",
-    "initial",
-    "illegal",
-    "replace",
-    "expire",
-    "percentage",
-    "meaning",
-    "approve",
-    "content",
-    "disappointed",
-    "surface",
-    "crew",
-    "unlike",
-    "accountant",
-    "society",
-    "supply",
-    "solve",
-    "boarding",
-    "completion",
-    "advise",
-    "closely",
-    "anniversary",
-    "hearing",
-    "profile",
-    "impressive",
-    "nature",
-    "incredible",
-    "quarter",
-    "hiring",
-    "equal",
-    "portion",
-    "instance",
-    "premium",
-    "aquarium",
-    "rude",
-    "rarely",
-    "baker",
-    "sailing",
-    "writer",
-    "refer",
-    "slowly",
-    "aisle",
-    "atmosphere",
-    "version",
-    "waiter",
-    "somewhat",
-    "whatever",
-    "certificate",
-    "graduate",
-    "embarrassed",
-    "enthusiasm",
-    "empty",
-    "habits",
-    "freezing",
-    "examine",
-    "conscious",
-    "fitness",
-    "fiction",
-    "forecast",
-    "division",
-    "charts",
-    "extreme",
-    "everywhere",
-    "elderly",
-    "mathematics",
-    "patients",
-    "layers",
-    "recycle",
-    "instrument",
-    "shelter",
-    "invention",
-    "publication",
-    "itinerary",
-    "layout",
-    "maximum",
-    "primary",
-    "patience",
-    "manner",
-    "secure",
-    "invest",
-    "media",
-    "stronger",
-    "aircraft",
-    "toxic",
-    "urgent",
-    "cabinet",
-    "editor",
-    "earn",
-    "diving",
-    "donate",
-    "fascinating",
-    "cooking",
-    "feeling",
-    "filters",
-    "cargo",
-    "custom",
-    "declined",
-    "caption",
-    "dining",
-    "coupons",
-    "obviously",
-    "patent",
-    "interior",
-    "intended",
-    "infect",
-    "manufacture",
-    "logical",
-    "mainly",
-    "massive",
-    "inconvenience",
-    "linked",
-    "grateful",
-    "origin",
-    "incorrect",
-    "observe",
-    "selection",
-    "reject",
-    "subscribe",
-    "rough",
-    "prepared",
-    "shocked",
-    "slight",
-    "sharp",
-    "technique",
-    "reference",
-    "strictly",
-    "relative",
-    "remedy",
-    "regret",
-    "sightseeing",
-    "slightly",
-    "principal",
-    "substitute",
-    "proceed",
-    "property",
-    "switch",
-    "reflect",
-    "scale",
-    "preferred",
-    "ridiculous",
-    "remaining",
-    "postpone",
-    "sealed",
-    "trained",
-    "calculate",
-    "valued",
-    "charter",
-    "cattle",
-    "aggressive",
-    "vintage",
-    "worldwide",
-    "topic",
-    "aside",
-    "visible",
-    "volume",
-    "understood",
-    "younger",
-    "charger",
-    "towards",
-    "acting",
-    "accidentally",
-    "applicant",
-    "caution",
-    "broadcast",
-    "casual",
-    "victim",
-    "equity",
-    "quotation",
-    "pharmaceutical",
-    "overhead",
-    "illustrate",
-    "consent",
-    "scientific",
-    "sturdy",
-    "peninsula",
-    "enthusiastic",
-    "artistic",
-    "supplement",
-    "realistic",
-    "wellness",
-    "mammal",
-    "interrupt",
-    "statistics",
-    "attire",
-    "pharmacist",
-    "aviation",
-    "endorse",
-    "handout",
-    "monument",
-    "documentary",
-    "wearable",
-    "retrieve",
-    "malfunction",
-    "inconsistent",
-    "undesirable",
-    "surgeon",
-    "compliment",
-    "custodian",
-    "belongings",
-    "validate",
-    "tutorial",
-    "reassure",
-    "absent",
-    "misunderstand",
-    "outgoing",
-    "redesign",
-    "enrich",
-    "truthful",
-    "compose",
-    "detour",
-    "formally",
-    "bulletin",
-    "contemporary",
-    "pottery",
-    "literacy",
-    "prescribe",
-    "checkup",
-    "sizable",
-    "cavity",
-    "stream",
-    "enroll",
-    "dormitory",
-    "superb",
-    "carpenter",
-    "punctual",
-    "spelling",
-    "favor",
-    "proximity",
-    "urban",
-    "interfere",
-    "clarity",
-    "conversion",
-    "faulty",
-    "lend",
-    "discourage",
-    "spectacular",
-    "identical",
-    "concrete",
-    "weigh",
-    "fertilizer",
-    "versatile",
-    "fortunate",
-    "readable",
-    "disposal",
-    "supplementary",
-    "cooperative",
-    "settle",
-    "entirely",
-    "numerous",
-    "vacancy",
-    "attorney",
-    "representation",
-    "edit",
-    "courtesy",
-    "subtotal",
-    "tableware",
-    "clerical",
-    "extent",
-    "modification",
-    "enclosure",
-    "repeatedly",
-    "catering",
-    "meantime",
-    "routinely",
-    "appeal",
-    "heritage",
-    "diner",
-    "occasional",
-    "entertain",
-    "portray",
-    "respectively",
-    "leisure",
-    "legendary",
-    "consist",
-    "equally",
-    "composition",
-    "sensation",
-    "impression",
-    "territory",
-    "staircase",
-    "striking",
-    "ultimately",
-    "corresponding",
-    "breakdown",
-    "awkward",
-    "criticism",
-    "summarize",
-    "noticeable",
-    "impossible",
-    "approximate",
-    "stimulating",
-    "reasoning",
-    "trait",
-    "mystery",
-    "default",
-    "liberty",
-    "manageable",
-    "assurance",
-    "delicate",
-    "complication",
-    "complicate",
-    "tolerate",
-    "rainfall",
-    "rapidly",
-    "landfill",
-    "pursue",
-    "sanitary",
-    "extract",
-    "nourish",
-    "drain",
-    "suspect",
-    "amateur",
-    "esteem",
-    "archive",
-    "forum",
-    "compatible",
-    "conserve",
-    "adjustment",
-    "unplug",
-    "tradition",
-    "handcrafted",
-    "acquaintance",
-    "sharpen",
-    "allowance",
-    "intense",
-    "alter",
-    "impress",
-    "translation",
-    "ease",
-    "readability",
-    "fading",
-    "exterior",
-    "insulated",
-    "combat",
-    "adequately",
-    "enlarge",
-    "satisfactory",
-    "transport",
-    "lively",
-    "sympathize",
-    "sentiment",
-    "diagnose",
-    "emission",
-    "modify",
-    "constructive",
-    "construct",
-    "proficiency",
-    "questionable",
-    "instruct",
-    "copyright",
-    "dietary",
-    "obstacle",
-    "examination",
-    "fortunately",
-    "disabled",
-    "appetizer",
-    "leak",
-    "insulation",
-    "mainstream",
-    "passion",
-    "translate",
-    "fare",
-    "fragile",
-    "vacant",
-    "pledge",
-    "wrap",
-    "stack",
-    "brilliant",
-    "lifelong",
-    "pitfall",
-    "facilitator",
-    "swiftly",
-    "suburban",
-    "prototype",
-    "consideration",
-    "excess",
-    "synthetic",
-    "mandatory",
-    "ignore",
-    "generosity",
-    "alongside",
-    "engaged",
-    "sequence",
-    "companion",
-    "inferior",
-    "similarity",
-    "divorce",
-    "element",
-    "insist",
-    "definite",
-    "evident",
-    "instinct",
-    "desirable",
-    "dialect",
-    "collapse",
-    "equality",
-    "literary",
-    "literature",
-    "sensible",
-    "physics",
-    "substance",
-    "narrow",
-    "universal",
-    "extraordinary",
-    "unpleasant",
-    "tragedy",
-    "crime",
-    "contrary",
-    "pronunciation",
-    "explosion",
-    "destruction",
-    "privilege",
-    "virtue",
-    "debate",
-    "philosophy",
-    "pursuit",
-    "harmony",
-    "compound",
-    "intelligent",
-    "roughly",
-    "contrast",
-    "cope",
-    "funeral",
-    "opponent",
-    "ancestor",
-    "absolute",
-    "constant",
-    "spiritual",
-    "biological",
-    "precisely",
-    "mature",
-    "evolve",
-    "intimate",
-    "behave",
-    "anxiety",
-    "uncomfortable",
-    "impulse",
-    "symptom",
-    "minority",
-    "merchant",
-    "burden",
-    "experiment",
-    "occasionally",
-    "affair",
-    "servant",
-    "suburb",
-    "conduct",
-    "voyage",
-    "curious",
-    "curiosity",
-    "vocabulary",
-    "phenomenon",
-    "strict",
-    "stranger",
-    "invisible",
-    "distinction",
-    "ultimate",
-    "sacrifice",
-    "arise",
-    "peculiar",
-    "crisis",
-    "unlikely",
-    "distant",
-    "meanwhile",
-    "disagree",
-    "dignity",
-    "dependent",
-    "affection",
-    "struggle",
-    "wander",
-    "strain",
-    "distinct",
-    "peer",
-    "voter",
-    "somehow",
-    "governor",
-    "mere",
-    "embrace",
-    "tissue",
-    "pupil",
-    "readily",
-    "surgery",
-    "province",
-    "discipline",
-    "verbal",
-    "remark",
-    "multiple",
-    "regardless",
-    "relieve",
-    "expose",
-    "fascinate",
-    "convert",
-    "divide",
-    "accuse",
-    "exhaust",
-    "criticize",
-    "deny",
-    "bind",
-    "govern",
-    "confront",
-    "embarrass",
-    "ruin",
-    "spoil",
-    "declare",
-    "occupy",
-    "possess",
-    "surround",
-    "overcome",
-    "devise",
-    "inspire",
-    "isolate",
-    "overlook",
-    "absorb",
-    "impose",
-    "swallow",
-    "cease",
-    "scatter",
-    "astonish",
-    "grasp",
-    "urge",
-    "disturb",
-    "trace",
-    "neglect",
-    "offend",
-    "beneath",
-    "oppose",
-    "endure",
-    "devote",
-    "passage",
-    "inhabitant",
-    "trustworthy",
-    "afterwards",
-    "inclusive",
-    "occupied",
-    "knowledgeable",
-    "considerate",
-    "splendid",
-    "doubtful",
-    "proficient",
-    "immense",
-    "agreeable",
-    "unpredictable",
-    "timeline",
-    "demanding",
-    "beneficial",
-    "freight",
-    "neighboring",
-    "situated",
-    "minimal",
-    "exhausted",
-    "thrilled",
-    "allowable",
-    "informative",
-    "compulsory",
-    "designated",
-    "entertaining",
-    "permissible",
-    "modest",
-    "certified",
-    "competent",
-    "suited",
-    "hourly",
-    "unfavorable",
-    "endangered",
-    "preferable",
-    "beforehand",
-    "concise",
-    "steep",
-    "continuous",
-    "suspicious",
-    "inspiring",
-    "countless",
-    "unforeseen",
-    "ambitious",
-    "aboard",
-    "voluntarily",
-    "independently",
-    "moderate",
-    "concentrated",
-    "informally",
-    "intentionally",
-    "ample",
-    "voluntary",
-    "dismiss",
-    "oversee",
-    "discontinued",
-    "emerging",
-    "scenic",
-    "acclaimed",
-    "delegate",
-    "resistant",
-    "applaud",
-    "resemble",
-    "hands-on",
-    "plummet",
-    "conform",
-    "introductory",
-    "lengthy",
-    "misplace",
-    "reunion",
-    "terminate",
-    "itemize",
-    "occupancy",
-    "coincidence",
-    "credentials",
-    "oversight",
-    "turnaround",
-    "apprentice",
-    "depression",
-    "intermission",
-    "amenity",
-    "exclusion",
-    "momentum",
-    "tenure",
-    "revival",
-    "subscriber",
-    "conservation",
-    "alternatively",
-    "mutually",
-    "scarcely",
-    "rebuild",
-    "detective",
-    "sorrow",
-    "spectacle",
-    "carbohydrate",
-    "exploration",
-    "recipient",
-    "elegant",
-    "vanish",
-    "gravity",
-    "minimize",
-    "acquaint",
-    "boredom",
-    "breadth",
-    "diabetes",
-    "parental",
-    "glory",
-    "conceal",
-    "conductor",
-    "unite",
-    "courageous",
-    "hostile",
-    "instantly",
-    "delightful",
-    "sheer",
-    "despise",
-    "destiny",
-    "immune",
-    "exotic",
-    "neutral",
-    "biology",
-    "progressive",
-    "distress",
-    "terrific",
-    "dread",
-    "tragic",
-    "sympathy",
-    "isolation",
-    "syndrome",
-    "forbidden",
-    "eternal",
-    "breeze",
-    "uncertain",
-    "dissolve",
-    "fairness",
-    "famine",
-    "farewell",
-    "crush",
-    "feast",
-    "fertile",
-    "illusion",
-    "anonymous",
-    "flatter",
-    "flourish",
-    "fluent",
-    "scramble",
-    "sibling",
-    "irony",
-    "furnish",
-    "persist",
-    "gloomy",
-    "fruitful",
-    "glorious",
-    "forgetful",
-    "grieve",
-    "mentally",
-    "grim",
-    "grind",
-    "cheat",
-    "groan",
-    "exploit",
-    "organism",
-    "harmless",
-    "hasten",
-    "ecological",
-    "honorable",
-    "texture",
-    "graceful",
-    "impatient",
-    "custody",
-    "inhabit",
-    "insure",
-    "desperately",
-    "compel",
-    "inherit",
-    "nasty",
-    "shrink",
-    "fierce",
-    "magnificent",
-    "majesty",
-    "weaken",
-    "unfair",
-    "terrain",
-    "deploy",
-    "distract",
-    "depressed",
-    "migration",
-    "misfortune",
-    "invade",
-    "classify",
-    "informal",
-    "well-being",
-    "ecosystem",
-    "glimpse",
-    "omit",
-    "onward",
-    "mentor",
-    "ornament",
-    "oversleep",
-    "overtake",
-    "commodity",
-    "likelihood",
-    "perish",
-    "pessimistic",
-    "refuge",
-    "steer",
-    "intact",
-    "thrive",
-    "triumph",
-    "conscience",
-    "emotionally",
-    "expedition",
-    "remarkably",
-    "brutal",
-    "predator",
-    "opt",
-    "soar",
-    "enact",
-    "fraction",
-    "roar",
-    "robbery",
-    "denial",
-    "scarce",
-    "undergraduate",
-    "cruel",
-    "snatch",
-    "regain",
-    "retreat",
-    "molecule",
-    "integrated",
-    "startle",
-    "fatigue",
-    "stubborn",
-    "disturbing",
-    "magnetic",
-    "summon",
-    "mutter",
-    "symphony",
-    "riot",
-    "tempt",
-    "nutrient",
-    "thermometer",
-    "thorn",
-    "uncover",
-    "spine",
-    "diplomat",
-    "epidemic",
-    "admirable",
-    "fatal",
-    "vigor",
-    "trim",
-    "vivid",
-    "volcano",
-    "feeble",
-    "vow",
-    "nationwide",
-    "dictate",
-    "wit",
-    "naval",
-    "astronaut",
-    "astronomy",
-    "betrayal",
-    "blueprint",
-    "bribe",
-    "brighten",
-    "brilliance",
-    "chairperson",
-    "coarse",
-    "comet",
-    "contentment",
-    "councilor",
-    "crouch",
-    "deceit",
-    "defy",
-    "delicately",
-    "digestion",
-    "disturbance",
-    "dreadful",
-    "dullness",
-    "dwelling",
-    "earnestly",
-    "endurance",
-    "corrupt",
-    "envious",
-    "eternally",
-    "exaggeration",
-    "examiner",
-    "excursion",
-    "exhaustion",
-    "federation",
-    "fossil",
-    "fulfillment",
-    "gratitude",
-    "digit",
-    "inquire",
-    "unclear",
-    "deposit",
-    "launch",
-    "consumer",
-    "housing",
-    "hesitate",
-    "outstanding",
-    "historic",
-    "organic",
-    "comparable",
-    "exhibitor",
-    "install",
-    "landscape",
-    "vendor",
-    "workplace",
-    "designer",
-    "praise",
-    "verify",
-    "orientation",
-    "routine",
-    "alternate",
-    "virtual",
-    "appearance",
-    "provider",
-    "reschedule",
-    "boulevard",
-    "attachment",
-    "kitchenware",
-    "critics",
-    "impressed",
-    "detergent",
-    "activate",
-    "scientist",
-    "internship",
-    "affordable",
-    "relocate",
-    "artwork",
-    "congratulate",
-    "talented",
-    "institute",
-    "athletic",
-    "delighted",
-    "exceptional",
-    "critic",
-    "residential",
-    "unexpected",
-    "loyal",
-    "reminder",
-    "track",
-    "long-term",
-    "pastry",
-    "temple",
-    "publisher",
-    "outline",
-    "reception",
-    "incomplete",
-    "temporarily",
-    "closure",
-    "donation",
-    "neighborhood",
-    "election",
-    "inspiration",
-    "ongoing",
-    "curator",
-    "draft",
-    "faculty",
-    "promptly",
-    "attentive",
-    "inquiry",
-    "evenly",
-    "stationery",
-    "asset",
-    "rapid",
-    "preference",
-    "combine",
-    "wholesale",
-    "outlet",
-    "behalf",
-    "native",
-    "yield",
-    "export",
-    "faithfully",
-    "primarily",
-    "rubbish",
-    "attach",
-    "poll",
-    "fabric",
-    "souvenir",
-    "minister",
-    "income",
-    "locate",
-    "formula",
-    "enclose",
-    "quantity",
-    "rebate",
-    "nutrition",
-    "shortage",
-    "disappointment",
-    "friendliness",
-    "chemistry",
-    "prescription",
-    "fulfill",
-    "qualify",
-    "trial",
-    "inspector",
-    "recognize",
-    "preservation",
-    "supervise",
-    "decade",
-    "edition",
-    "pedestrian",
-    "residence",
-    "refurbish",
-    "equip",
-    "compile",
-    "assure",
-    "walkway",
-    "apology",
-    "overwhelm",
-    "debris",
-    "cuisine",
-    "childhood",
-    "column",
-    "lifetime",
-    "rotate",
-    "talent",
-    "frequency",
-    "presence",
-    "sidewalk",
-    "contributor",
-    "leftover",
-    "stimulate",
-    "browse",
-    "loosen",
-    "admiration",
-    "workforce",
-    "commute",
-    "confess",
-    "résumé",
-    "ladder",
-    "takeoff",
-    "lighthouse",
-    "fountain",
-    "withdraw",
-    "expiration",
-    "unload",
-    "theme",
-    "restore",
-    "witness",
-    "motivate",
-    "motion",
-    "investor",
-    "tighten",
-    "currency",
-    "await",
-    "transmit",
-    "designate",
-    "hydrogen",
-    "portrait",
-    "victory",
-    "incident",
-    "indicator",
-    "marriage",
-    "reckon",
-    "prison",
-    "administrator",
-    "landlord",
-    "stitch",
-    "publish",
-    "pretend",
-    "depot",
-    "spec",
-    "trillion",
-    "niche",
-    "interface",
-    "submit",
-    "least",
-    "clinic",
-    "workshop",
-    "board member",
-    "features",
-    "essay",
-    "print",
-    "interviewer",
-    "creative",
-    "confirmation"
-  ],
-  "B1": [
-    "achieve",
-    "adapt",
-    "advantage",
-    "afford",
-    "announce",
-    "apply",
-    "arrange",
-    "attend",
-    "behavior",
-    "benefit",
-    "challenge",
-    "complaint",
-    "concern",
-    "confirm",
-    "consider",
-    "contribute",
-    "convenient",
-    "decision",
-    "delay",
-    "depend",
-    "develop",
-    "disadvantage",
-    "effective",
-    "efficient",
-    "encourage",
-    "essential",
-    "expect",
-    "familiar",
-    "flexible",
-    "focus",
-    "increase",
-    "influence",
-    "issue",
-    "likely",
-    "maintain",
-    "opportunity",
-    "participate",
-    "perform",
-    "permit",
-    "prevent",
-    "provide",
-    "reduce",
-    "refuse",
-    "relate",
-    "reliable",
-    "request",
-    "require",
-    "respond",
-    "responsible",
-    "result",
-    "risk",
-    "satisfied",
-    "separate",
-    "solution",
-    "specific",
-    "support",
-    "suppose",
-    "survive",
-    "temporary",
-    "tend",
-    "typical",
-    "unusual",
-    "valuable",
-    "variety",
-    "wonder",
-    "aware",
-    "balance",
-    "career",
-    "condition",
-    "confident",
-    "deal",
-    "delivery",
-    "detail",
-    "discuss",
-    "emergency",
-    "equipment",
-    "feedback",
-    "goal",
-    "habit",
-    "knowledge",
-    "method",
-    "option",
-    "patient",
-    "policy",
-    "process",
-    "progress",
-    "purpose",
-    "quality",
-    "recent",
-    "relationship",
-    "resource",
-    "situation",
-    "skill",
-    "stress",
-    "suitable",
-    "treatment",
-    "update",
-    "willing",
-    "adaptable",
-    "accurate",
-    "appropriate",
-    "attitude",
-    "average",
-    "avoidance",
-    "budget",
-    "community",
-    "deadline",
-    "destination",
-    "device",
-    "difficulty",
-    "encouragement",
-    "exchange",
-    "facility",
-    "feature",
-    "formal",
-    "frequent",
-    "general",
-    "independent",
-    "instruction",
-    "intention",
-    "item",
-    "location",
-    "medical",
-    "ordinary",
-    "performance",
-    "positive",
-    "practical",
-    "professional",
-    "reaction",
-    "regular",
-    "replacement",
-    "requirement",
-    "similar",
-    "standard",
-    "strength",
-    "transportation",
-    "absence",
-    "academic",
-    "actual",
-    "advertise",
-    "affect",
-    "aim",
-    "amount",
-    "anxious",
-    "arrival",
-    "branch",
-    "cause",
-    "character",
-    "connect",
-    "create",
-    "decrease",
-    "demand",
-    "design",
-    "disease",
-    "effort",
-    "employ",
-    "exact",
-    "express",
-    "growth",
-    "health",
-    "imagine",
-    "interview",
-    "matter",
-    "measure",
-    "mention",
-    "mind",
-    "object",
-    "personal",
-    "produce",
-    "protect",
-    "relation",
-    "remain",
-    "research",
-    "role",
-    "trouble",
-    "value",
-    "various",
-    "volunteer",
-    "access",
-    "objective",
-    "admire",
-    "admit",
-    "adopt",
-    "advance",
-    "agency",
-    "agreement",
-    "agriculture",
-    "alarm",
-    "alternative",
-    "analysis",
-    "application",
-    "approach",
-    "argument",
-    "arrangement",
-    "audience",
-    "author",
-    "background",
-    "belief",
-    "border",
-    "campaign",
-    "candidate",
-    "characteristic",
-    "climate",
-    "colleague",
-    "communication",
-    "conclusion",
-    "confidence",
-    "consequence",
-    "damage",
-    "definition",
-    "department",
-    "description",
-    "development",
-    "discussion",
-    "effect",
-    "efficiency",
-    "employment",
-    "evidence",
-    "expression",
-    "failure",
-    "finance",
-    "freedom",
-    "function",
-    "improvement",
-    "independence",
-    "lifestyle",
-    "limit",
-    "management",
-    "material",
-    "memory",
-    "necessity",
-    "organization",
-    "participant",
-    "permission",
-    "personality",
-    "population",
-    "position",
-    "possibility",
-    "preparation",
-    "prevention",
-    "production",
-    "profession",
-    "protection",
-    "recommendation",
-    "reduction",
-    "refusal",
-    "reliability",
-    "responsibility",
-    "accommodation",
-    "achievement",
-    "admission",
-    "advertising",
-    "capacity",
-    "category",
-    "contribution",
-    "convenience",
-    "explanation",
-    "introduction",
-    "movement",
-    "response",
-    "success",
-    "suggestion",
-    "type",
-    "willingness",
-    "deal with",
-    "depend on",
-    "belong to",
-    "apply for",
-    "prepare for",
-    "focus on",
-    "rely on",
-    "agree with",
-    "agree on",
-    "apologize for",
-    "complain about",
-    "concentrate on",
-    "participate in",
-    "succeed in",
-    "believe in",
-    "care about",
-    "care for",
-    "suffer from",
-    "recover from",
-    "protect from",
-    "prevent from",
-    "provide with",
-    "be responsible for",
-    "be suitable for",
-    "be available for",
-    "be familiar with",
-    "be similar to",
-    "be related to",
-    "be satisfied with",
-    "be disappointed with",
-    "be involved in",
-    "be concerned about",
-    "make sure",
-    "make progress",
-    "make an effort",
-    "make a decision",
-    "make a difference",
-    "make sense",
-    "make use of",
-    "make contact with",
-    "take advantage of",
-    "take responsibility for",
-    "take place",
-    "take action",
-    "take into consideration",
-    "pay attention to",
-    "keep in touch with",
-    "keep track of",
-    "keep calm",
-    "keep quiet",
-    "come up with",
-    "find out about",
-    "work out",
-    "carry out",
-    "set up",
-    "give up",
-    "pick out",
-    "point out",
-    "turn down",
-    "turn out",
-    "break down",
-    "calm down",
-    "slow down",
-    "run out of",
-    "get along with",
-    "get used to",
-    "get rid of",
-    "look into",
-    "as a result",
-    "as a result of",
-    "in addition",
-    "in addition to",
-    "in general",
-    "in particular",
-    "in fact",
-    "in common",
-    "in public",
-    "in private",
-    "on purpose",
-    "by mistake",
-    "by chance",
-    "at least",
-    "at most",
-    "according to",
-    "because of",
-    "due to",
-    "instead of",
-    "even though",
-    "even if",
-    "as long as",
-    "so that",
-    "from time to time",
-    "sooner or later",
-    "no longer",
-    "in charge of",
-    "in favor of",
-    "in need of",
-    "in order to",
-    "be aware of",
-    "be capable of",
-    "be willing to",
-    "be likely to",
-    "have trouble with",
-    "have difficulty with",
-    "have experience in",
-    "within",
-    "survey",
-    "government",
-    "throughout",
-    "either",
-    "industry",
-    "financial",
-    "security",
-    "prior",
-    "entire",
-    "completely",
-    "technology",
-    "strike",
-    "shipping",
-    "conference",
-    "virus",
-    "union",
-    "peace",
-    "international",
-    "forward",
-    "construction",
-    "extremely",
-    "ancient",
-    "unless",
-    "legal",
-    "hardly",
-    "insurance",
-    "lobby",
-    "warranty",
-    "whether",
-    "data",
-    "highly",
-    "billboard",
-    "resume",
-    "eventually",
-    "requirements",
-    "representative",
-    "grant",
-    "chain",
-    "profits",
-    "involved",
-    "commercial",
-    "reduced",
-    "regarding",
-    "network",
-    "aspects",
-    "automation",
-    "loan",
-    "firm",
-    "labor",
-    "coverage",
-    "national",
-    "northern",
-    "capable",
-    "technical",
-    "profit",
-    "term",
-    "energy",
-    "programming",
-    "invented",
-    "volunteers",
-    "superior",
-    "floods",
-    "operating",
-    "manufacturer",
-    "compete",
-    "supplier",
-    "lack",
-    "retirement",
-    "basis",
-    "association",
-    "purchasing",
-    "administrative",
-    "economic",
-    "enclosed",
-    "greatly",
-    "applicants",
-    "eligible",
-    "ordering",
-    "attract",
-    "colleagues",
-    "therefore",
-    "connected",
-    "specifically",
-    "operation",
-    "powerful",
-    "educational",
-    "occurred",
-    "figures",
-    "quarterly",
-    "efficiently",
-    "lawyer",
-    "marketing",
-    "social",
-    "terminal",
-    "conclude",
-    "duties",
-    "attendance",
-    "renovation",
-    "engineering",
-    "disaster",
-    "status",
-    "intent",
-    "qualified",
-    "latter",
-    "favorable",
-    "seminar",
-    "detailed",
-    "procedures",
-    "recognition",
-    "investment",
-    "exhibit",
-    "chemical",
-    "ceremony",
-    "communities",
-    "complaints",
-    "automated",
-    "attached",
-    "candidates",
-    "distribute",
-    "functionality",
-    "essentially",
-    "moreover",
-    "leading",
-    "reputation",
-    "operators",
-    "estate",
-    "methods",
-    "virtually",
-    "specifications",
-    "exclusive",
-    "popularity",
-    "machinery",
-    "funding",
-    "programmers",
-    "networks",
-    "merely",
-    "publications",
-    "mechanical",
-    "archives",
-    "secretarial",
-    "altogether",
-    "agencies",
-    "accurately",
-    "assembly",
-    "concerning",
-    "equipped",
-    "employers",
-    "estimated",
-    "chairman",
-    "defects",
-    "deliberately",
-    "expanding",
-    "productivity",
-    "investors",
-    "improvements",
-    "personnel",
-    "overseas",
-    "sensitive",
-    "merchandise",
-    "warehouse",
-    "surplus",
-    "authorities",
-    "techniques",
-    "widely",
-    "adapted",
-    "specialized",
-    "supervised",
-    "supervisor",
-    "banking",
-    "tremendous",
-    "firsthand",
-    "chemicals",
-    "conducted",
-    "frequently",
-    "enormous",
-    "carbon",
-    "concealed",
-    "consult",
-    "creation",
-    "dynasty",
-    "contributions",
-    "employer",
-    "extend",
-    "medieval",
-    "persuade",
-    "malfunctioning",
-    "peak",
-    "networked",
-    "necessarily",
-    "obsession",
-    "openly",
-    "namely",
-    "thorough",
-    "settlement",
-    "predicted",
-    "scheme",
-    "relying",
-    "restrictions",
-    "strategies",
-    "programmer",
-    "severely",
-    "adjoining",
-    "architectural",
-    "trustees",
-    "arid",
-    "bulk",
-    "arrangements",
-    "billion",
-    "breeding",
-    "acid",
-    "beliefs",
-    "cultivate",
-    "prerequisite",
-    "occupation",
-    "continual",
-    "drastically",
-    "forthcoming",
-    "rational",
-    "intellectual",
-    "unemployment",
-    "originate",
-    "refugee",
-    "persuasive",
-    "intensive",
-    "consolidate",
-    "monetary",
-    "drainage",
-    "paycheck",
-    "devoted",
-    "expedite",
-    "inattentive",
-    "overbook",
-    "handicraft",
-    "orient",
-    "colossal",
-    "mineral",
-    "unveil",
-    "harmonize",
-    "inaugurate",
-    "objection",
-    "excerpt",
-    "critically",
-    "counsel",
-    "dissatisfaction",
-    "worsen",
-    "violation",
-    "fusion",
-    "flair",
-    "giveaway",
-    "prudent",
-    "optimize",
-    "strengthen",
-    "cost-effective",
-    "superiority",
-    "unavoidable",
-    "usability",
-    "angular",
-    "demolition",
-    "precision",
-    "punctuality",
-    "withstand",
-    "waterproof",
-    "solely",
-    "waiver",
-    "industry-wide",
-    "legally",
-    "prohibited",
-    "unpublished",
-    "preceding",
-    "deserving",
-    "breathtaking",
-    "furthermore",
-    "biweekly",
-    "enforcement",
-    "cutting-edge",
-    "rigidly",
-    "ambassador",
-    "compost",
-    "assault",
-    "literally",
-    "recession",
-    "mortgage",
-    "presidential",
-    "deficit",
-    "racial",
-    "psychologist",
-    "colony",
-    "supreme",
-    "emperor",
-    "atomic",
-    "primitive",
-    "ritual",
-    "scholar",
-    "revolution",
-    "nuclear",
-    "immigrant",
-    "senator",
-    "senate",
-    "commissioner",
-    "depress",
-    "suppress",
-    "imitate",
-    "simultaneous",
-    "municipal",
-    "legible",
-    "unanimous",
-    "ceremonial",
-    "utmost",
-    "distinguished",
-    "instrumental",
-    "comprehend",
-    "dilute",
-    "reminisce",
-    "waive",
-    "prosperous",
-    "interim",
-    "surrender",
-    "sympathetic",
-    "realm",
-    "metaphor",
-    "entity",
-    "arithmetic",
-    "cathedral",
-    "nominee",
-    "inmate",
-    "courtroom",
-    "conquest",
-    "cunning",
-    "vaccine",
-    "declaration",
-    "secular",
-    "verdict",
-    "practitioner",
-    "statistical",
-    "protocol",
-    "monarch",
-    "stimulus",
-    "obedience",
-    "artifact",
-    "oriental",
-    "slavery",
-    "demographic",
-    "legislator",
-    "prefecture",
-    "conception",
-    "feminist",
-    "provincial",
-    "tolerance",
-    "peasant",
-    "statesman",
-    "confession",
-    "substantially",
-    "devastating",
-    "accusation",
-    "hazard",
-    "comical",
-    "ascent",
-    "electron",
-    "voucher",
-    "processor",
-    "relocation",
-    "notification",
-    "coworker",
-    "promotional",
-    "mission",
-    "recruit",
-    "showcase",
-    "qualification",
-    "retailer",
-    "sector",
-    "exporter",
-    "competence",
-    "external",
-    "downside",
-    "venture",
-    "applicable",
-    "outage",
-    "referral",
-    "questionnaire",
-    "accomplishment",
-    "verification",
-    "enterprise",
-    "engagement",
-    "determination",
-    "administer",
-    "payroll",
-    "revise",
-    "premise",
-    "appraisal",
-    "clearance",
-    "turnover",
-    "tactics",
-    "borrowing",
-    "conveniently",
-    "congratulation",
-    "implied",
-    "official",
-    "implemented",
-    "sculpture",
-    "reported",
-    "placid",
-    "luncheon",
-    "directory",
-    "trend",
-    "thoroughly",
-    "laboratory",
-    "regional",
-    "botanical",
-    "assign",
-    "inconvenient",
-    "preserve",
-    "annually",
-    "vacate",
-    "potentially",
-    "specification",
-    "conservative",
-    "transaction",
-    "effectively",
-    "expectation",
-    "marine",
-    "commission",
-    "dedicate",
-    "fund-raising",
-    "calculation",
-    "collaborate",
-    "disruption",
-    "supervision",
-    "utopia",
-    "comprehension",
-    "optics",
-    "addendum",
-    "prohibit",
-    "inspect",
-    "foresee",
-    "appoint",
-    "relief",
-    "transact",
-    "abolish",
-    "suspend",
-    "paperwork",
-    "initiate",
-    "disregard",
-    "affiliate",
-    "clutter",
-    "inflation",
-    "equation",
-    "dividend",
-    "consolidation",
-    "intelligence",
-    "arrest",
-    "termination",
-    "defeat",
-    "variance",
-    "profitability",
-    "clause",
-    "stockholder",
-    "trademark",
-    "layoff",
-    "accountancy",
-    "allegation",
-    "underlie",
-    "between a and b",
-    "accounting",
-    "cooperate",
-    "inspection",
-    "invoice",
-    "retail",
-    "loyalty",
-    "billing",
-    "banquet",
-    "venue",
-    "auditorium",
-    "mentoring",
-    "complimentary"
-  ],
-  "B2": [
-    "accomplish",
-    "acknowledge",
-    "adequate",
-    "anticipate",
-    "apparent",
-    "assess",
-    "assume",
-    "attempt",
-    "awareness",
-    "circumstance",
-    "commit",
-    "complex",
-    "considerable",
-    "consistent",
-    "constraint",
-    "consume",
-    "controversial",
-    "convince",
-    "crucial",
-    "decline",
-    "demonstrate",
-    "determine",
-    "distinguish",
-    "emphasize",
-    "enable",
-    "encounter",
-    "ensure",
-    "establish",
-    "evaluate",
-    "exception",
-    "expand",
-    "factor",
-    "fundamental",
-    "generate",
-    "impact",
-    "implement",
-    "imply",
-    "indicate",
-    "inevitable",
-    "interpret",
-    "justify",
-    "negotiate",
-    "obtain",
-    "occur",
-    "perceive",
-    "perspective",
-    "potential",
-    "predict",
-    "priority",
-    "procedure",
-    "promote",
-    "propose",
-    "prospect",
-    "react",
-    "recover",
-    "regard",
-    "regulate",
-    "relevant",
-    "resolve",
-    "restrict",
-    "significant",
-    "strategy",
-    "substantial",
-    "sufficient",
-    "tendency",
-    "transform",
-    "valid",
-    "vary",
-    "widespread",
-    "allocate",
-    "ambiguous",
-    "analyze",
-    "assumption",
-    "attribute",
-    "compensate",
-    "component",
-    "comprehensive",
-    "concentrate",
-    "conventional",
-    "coordinate",
-    "criteria",
-    "derive",
-    "dispute",
-    "diverse",
-    "domestic",
-    "eliminate",
-    "enhance",
-    "ethical",
-    "exceed",
-    "exclude",
-    "explicit",
-    "framework",
-    "guarantee",
-    "highlight",
-    "identify",
-    "incentive",
-    "insight",
-    "integrate",
-    "interact",
-    "internal",
-    "investigate",
-    "outcome",
-    "overall",
-    "precise",
-    "principle",
-    "proportion",
-    "reinforce",
-    "reluctant",
-    "retain",
-    "scope",
-    "shift",
-    "stable",
-    "undertake",
-    "viable",
-    "abstract",
-    "accompany",
-    "acquire",
-    "adjust",
-    "advocate",
-    "barrier",
-    "clarify",
-    "define",
-    "estimate",
-    "involve",
-    "parameter",
-    "reveal",
-    "acceptable",
-    "accountability",
-    "accumulation",
-    "adaptation",
-    "administration",
-    "adoption",
-    "allocation",
-    "ambiguity",
-    "ambition",
-    "analogy",
-    "anticipation",
-    "appreciation",
-    "assessment",
-    "authority",
-    "boundary",
-    "capability",
-    "collaboration",
-    "combination",
-    "commitment",
-    "comparison",
-    "compensation",
-    "complexity",
-    "compliance",
-    "concentration",
-    "concept",
-    "configuration",
-    "consistency",
-    "consultation",
-    "consumption",
-    "context",
-    "controversy",
-    "convention",
-    "cooperation",
-    "coordination",
-    "criterion",
-    "demonstration",
-    "distribution",
-    "diversity",
-    "emphasis",
-    "enhancement",
-    "establishment",
-    "estimation",
-    "evaluation",
-    "expenditure",
-    "expertise",
-    "exposure",
-    "extension",
-    "flexibility",
-    "formulation",
-    "foundation",
-    "generation",
-    "hypothesis",
-    "identification",
-    "implication",
-    "implementation",
-    "incidence",
-    "indication",
-    "inequality",
-    "infrastructure",
-    "initiative",
-    "innovation",
-    "institution",
-    "integration",
-    "interaction",
-    "interpretation",
-    "intervention",
-    "investigation",
-    "involvement",
-    "justification",
-    "limitation",
-    "mechanism",
-    "negotiation",
-    "observation",
-    "participation",
-    "perception",
-    "prediction",
-    "probability",
-    "projection",
-    "promotion",
-    "provision",
-    "recovery",
-    "regulation",
-    "relevance",
-    "resolution",
-    "retention",
-    "revelation",
-    "significance",
-    "stability",
-    "structure",
-    "substitution",
-    "sustainability",
-    "transformation",
-    "transition",
-    "validity",
-    "variation",
-    "additional",
-    "aggregate",
-    "amendment",
-    "appreciate",
-    "arbitrary",
-    "assignment",
-    "compatibility",
-    "expansion",
-    "restriction",
-    "demand on",
-    "demand for",
-    "increase in",
-    "decrease in",
-    "rise in",
-    "fall in",
-    "effect on",
-    "impact on",
-    "influence on",
-    "pressure on",
-    "emphasis on",
-    "access to",
-    "approach to",
-    "solution to",
-    "response to",
-    "reaction to",
-    "attitude toward",
-    "attitude to",
-    "responsibility for",
-    "requirement for",
-    "reason for",
-    "need for",
-    "opportunity for",
-    "potential for",
-    "capacity for",
-    "relationship between",
-    "difference between",
-    "distinction between",
-    "connection with",
-    "contact with",
-    "experience with",
-    "difficulty with",
-    "contribute to",
-    "lead to",
-    "result in",
-    "result from",
-    "stem from",
-    "account for",
-    "consist of",
-    "consist in",
-    "cope with",
-    "comply with",
-    "adapt to",
-    "adjust to",
-    "respond to",
-    "refer to",
-    "object to",
-    "engage in",
-    "specialize in",
-    "invest in",
-    "benefit from",
-    "derive from",
-    "distinguish from",
-    "depend upon",
-    "rely upon",
-    "insist on",
-    "interfere with",
-    "associate with",
-    "compare with",
-    "base on",
-    "impose on",
-    "be based on",
-    "be associated with",
-    "be linked to",
-    "be exposed to",
-    "be subject to",
-    "be opposed to",
-    "be committed to",
-    "be entitled to",
-    "be dependent on",
-    "be independent of",
-    "take into account",
-    "take for granted",
-    "take effect",
-    "take priority",
-    "draw attention to",
-    "raise awareness of",
-    "meet a demand",
-    "meet a requirement",
-    "play a role in",
-    "pose a threat to",
-    "pose a challenge to",
-    "reach a conclusion",
-    "reach an agreement",
-    "reach a decision",
-    "come to a conclusion",
-    "come to an agreement",
-    "in terms of",
-    "in contrast to",
-    "in response to",
-    "in relation to",
-    "with regard to",
-    "with respect to",
-    "in accordance with",
-    "on behalf of",
-    "in the light of",
-    "in view of",
-    "to some extent",
-    "to a large extent",
-    "by means of",
-    "in the long run",
-    "in the short term",
-    "in the meantime",
-    "under pressure",
-    "under control",
-    "under consideration",
-    "editorial",
-    "corporation",
-    "approximately",
-    "executive",
-    "industrial",
-    "majority",
-    "maintenance",
-    "organizational",
-    "economy",
-    "nevertheless",
-    "political",
-    "proposal",
-    "global",
-    "manufacturing",
-    "corporate",
-    "confidential",
-    "inventory",
-    "extensive",
-    "profitable",
-    "institutions",
-    "consequently",
-    "exclusively",
-    "competitive",
-    "optimum",
-    "commercially",
-    "comply",
-    "transmission",
-    "authorized",
-    "psychological",
-    "portfolio",
-    "calculations",
-    "mechanization",
-    "negotiations",
-    "assumptions",
-    "clientele",
-    "destructive",
-    "evolution",
-    "aptitude",
-    "inadvertently",
-    "replicate",
-    "thereby",
-    "reimbursement",
-    "capabilities",
-    "utilize",
-    "adversely",
-    "bankrupt",
-    "authorization",
-    "susceptible",
-    "nonrefundable",
-    "superintendent",
-    "reconfiguration",
-    "pediatric",
-    "dentistry",
-    "unanticipated",
-    "conservatively",
-    "civilization",
-    "correspondent",
-    "undoubtedly",
-    "overwhelming",
-    "parliament",
-    "prestigious",
-    "inclement",
-    "sophisticated",
-    "revolutionary",
-    "negotiable",
-    "understaffed",
-    "commemorate",
-    "deprive",
-    "revert",
-    "pertain",
-    "diversify",
-    "deplete",
-    "speculate",
-    "solicit",
-    "rectify",
-    "procrastinate",
-    "subside",
-    "outweigh",
-    "liaison",
-    "theoretical",
-    "diplomatic",
-    "apparatus",
-    "capitalism",
-    "alleged",
-    "statute",
-    "conspiracy",
-    "execution",
-    "manipulate",
-    "subsidy",
-    "legislature",
-    "confrontation",
-    "jurisdiction",
-    "mortality",
-    "philosophical",
-    "theological",
-    "surveillance",
-    "plaintiff",
-    "architecture",
-    "economics",
-    "headquarters",
-    "revenue",
-    "valuation",
-    "obligation",
-    "shareholder",
-    "subsidiary",
-    "sustainable",
-    "troubleshooting",
-    "renowned",
-    "keynote",
-    "audit",
-    "spokesperson",
-    "multinational",
-    "ordinance",
-    "ownership",
-    "acquisition",
-    "apprenticeship",
-    "consortium",
-    "treasury",
-    "procurement",
-    "lawsuit",
-    "liability",
-    "restructure",
-    "constitution",
-    "regulator",
-    "memorandum",
-    "breach",
-    "consignment",
-    "takeover",
-    "bankruptcy",
-    "cashflow",
-    "creditor",
-    "depreciation",
-    "insurer",
-    "overdraft",
-    "outsource",
-    "arbitrator",
-    "equities",
-    "allege",
-    "orientate",
-    "solvent",
-    "merger",
-    "culinary",
-    "periodical"
-  ],
-  "C1": [
-    "alleviate",
-    "ambivalent",
-    "articulate",
-    "assert",
-    "attain",
-    "coherent",
-    "compelling",
-    "concede",
-    "contemplate",
-    "contradict",
-    "convey",
-    "correspond",
-    "credible",
-    "cumulative",
-    "deem",
-    "deteriorate",
-    "diminish",
-    "disclose",
-    "discrepancy",
-    "elaborate",
-    "elicit",
-    "empirical",
-    "encompass",
-    "entail",
-    "equivalent",
-    "exacerbate",
-    "feasible",
-    "foster",
-    "genuine",
-    "inherent",
-    "inhibit",
-    "innovative",
-    "integral",
-    "intervene",
-    "intricate",
-    "invoke",
-    "legitimate",
-    "marginal",
-    "mitigate",
-    "notion",
-    "overlap",
-    "paradox",
-    "plausible",
-    "preliminary",
-    "presume",
-    "prevail",
-    "profound",
-    "prompt",
-    "reconcile",
-    "refine",
-    "reluctance",
-    "rigorous",
-    "robust",
-    "scrutinize",
-    "subsequent",
-    "subtle",
-    "sustain",
-    "tentative",
-    "trigger",
-    "underlying",
-    "undermine",
-    "unprecedented",
-    "vulnerable",
-    "whereas",
-    "abundant",
-    "adjacent",
-    "anomaly",
-    "autonomous",
-    "bias",
-    "coincide",
-    "complement",
-    "comprise",
-    "conceive",
-    "concurrent",
-    "confine",
-    "consensus",
-    "constitute",
-    "contingent",
-    "counterpart",
-    "deduce",
-    "deviate",
-    "discrete",
-    "distort",
-    "embed",
-    "emerge",
-    "facilitate",
-    "fluctuate",
-    "formulate",
-    "hierarchy",
-    "implicit",
-    "incorporate",
-    "induce",
-    "infer",
-    "mediate",
-    "negligible",
-    "offset",
-    "persistent",
-    "predominant",
-    "provisional",
-    "reciprocal",
-    "resilient",
-    "restrain",
-    "subordinate",
-    "synthesize",
-    "threshold",
-    "undergo",
-    "abandon",
-    "conflict",
-    "delineate",
-    "abstraction",
-    "accommodate",
-    "accumulate",
-    "autonomy",
-    "abrupt",
-    "abundance",
-    "accelerate",
-    "accessible",
-    "acclaim",
-    "acute",
-    "adherence",
-    "adverse",
-    "affinity",
-    "aftermath",
-    "alliance",
-    "analogous",
-    "applicability",
-    "apprehension",
-    "aspiration",
-    "assertive",
-    "authentic",
-    "benchmark",
-    "compromise",
-    "conceptual",
-    "contingency",
-    "correlation",
-    "deliberate",
-    "dependency",
-    "deviation",
-    "dilemma",
-    "discrimination",
-    "displacement",
-    "distinctive",
-    "eligibility",
-    "entitlement",
-    "friction",
-    "ideology",
-    "inclination",
-    "induction",
-    "inference",
-    "integrity",
-    "intermediate",
-    "intrinsic",
-    "legitimacy",
-    "methodology",
-    "paradigm",
-    "proposition",
-    "resilience",
-    "scrutiny",
-    "spectrum",
-    "substantive",
-    "succession",
-    "synthesis",
-    "trajectory",
-    "transparency",
-    "variable",
-    "vulnerability",
-    "articulation",
-    "assertion",
-    "attribution",
-    "coherence",
-    "concession",
-    "conceptualization",
-    "contradiction",
-    "credibility",
-    "deduction",
-    "delineation",
-    "distortion",
-    "elaboration",
-    "emergence",
-    "equivalence",
-    "ethics",
-    "exacerbation",
-    "facilitation",
-    "feasibility",
-    "fluctuation",
-    "inhibition",
-    "marginality",
-    "mitigation",
-    "persistence",
-    "plausibility",
-    "prevalence",
-    "reconciliation",
-    "rigor",
-    "variability",
-    "give rise to",
-    "shed light on",
-    "draw a distinction between",
-    "place emphasis on",
-    "place a burden on",
-    "take precedence over",
-    "take issue with",
-    "take exception to",
-    "take account of",
-    "take stock of",
-    "take the view that",
-    "play a crucial role in",
-    "play a significant role in",
-    "be conducive to",
-    "be contingent on",
-    "be indicative of",
-    "be inherent in",
-    "be integral to",
-    "be compatible with",
-    "be consistent with",
-    "be comparable to",
-    "be equivalent to",
-    "be susceptible to",
-    "be vulnerable to",
-    "be attributable to",
-    "be characterized by",
-    "be accompanied by",
-    "be derived from",
-    "be premised on",
-    "be predicated on",
-    "be constrained by",
-    "be exempt from",
-    "be inclined to",
-    "account for a large proportion of",
-    "give an account of",
-    "come under scrutiny",
-    "come under pressure",
-    "come into effect",
-    "come into conflict with",
-    "come to terms with",
-    "bring about",
-    "bring into question",
-    "bring to light",
-    "call for",
-    "call into question",
-    "call attention to",
-    "put forward",
-    "put into perspective",
-    "put at risk",
-    "set out",
-    "set forth",
-    "set aside",
-    "set a precedent",
-    "carry implications for",
-    "have implications for",
-    "have a bearing on",
-    "have a tendency to",
-    "lend support to",
-    "lend itself to",
-    "pave the way for",
-    "pose a significant challenge to",
-    "pose a serious threat to",
-    "in the absence of",
-    "in the presence of",
-    "in the context of",
-    "in the course of",
-    "in the wake of",
-    "in the face of",
-    "in conjunction with",
-    "in line with",
-    "in keeping with",
-    "for the sake of",
-    "for the purpose of",
-    "on the grounds that",
-    "on the assumption that",
-    "to a considerable extent",
-    "to a certain extent",
-    "from the standpoint of",
-    "from the perspective of",
-    "with the exception of",
-    "with the intention of",
-    "proprietor",
-    "statutory",
-    "deterioration",
-    "consequential",
-    "exert",
-    "diversification",
-    "perennial",
-    "legislation",
-    "regime",
-    "speculation",
-    "entrepreneur",
-    "lucrative",
-    "antitrust",
-    "theology",
-    "judicial",
-    "sovereignty",
-    "meticulously",
-    "incur",
-    "conglomerate",
-    "remuneration",
-    "indemnity",
-    "arbitration",
-    "convergence",
-    "diligence",
-    "pursuant",
-    "insolvency",
-    "brokerage",
-    "liquidity",
-    "receivables",
-    "synergy",
-    "deregulation",
-    "capitalisation",
-    "appraisee",
-    "demerger",
-    "accession",
-    "privatization",
-    "speculator",
-    "underwrite",
-    "liquidate"
-  ],
-  "C2": [
-    "abstruse",
-    "acquiesce",
-    "ameliorate",
-    "anomalous",
-    "antithesis",
-    "appease",
-    "arduous",
-    "austere",
-    "circumspect",
-    "coalesce",
-    "conundrum",
-    "corroborate",
-    "deference",
-    "denounce",
-    "disseminate",
-    "dubious",
-    "eclectic",
-    "elusive",
-    "equivocal",
-    "exemplify",
-    "extrapolate",
-    "fastidious",
-    "fortuitous",
-    "futile",
-    "germane",
-    "impede",
-    "impeccable",
-    "inadvertent",
-    "incongruous",
-    "indispensable",
-    "ineffable",
-    "intransigent",
-    "lucid",
-    "meticulous",
-    "nuance",
-    "obfuscate",
-    "ostensibly",
-    "perfunctory",
-    "pragmatic",
-    "prolific",
-    "rebut",
-    "reciprocate",
-    "relinquish",
-    "repudiate",
-    "salient",
-    "sporadic",
-    "superfluous",
-    "tenacious",
-    "ubiquitous",
-    "vindicate",
-    "volatile",
-    "ambivalence",
-    "brevity",
-    "caveat",
-    "clandestine",
-    "complacent",
-    "conscientious",
-    "contentious",
-    "cryptic",
-    "debilitate",
-    "detrimental",
-    "didactic",
-    "dispassionate",
-    "eccentric",
-    "emulate",
-    "enigma",
-    "ephemeral",
-    "exhaustive",
-    "flagrant",
-    "frivolous",
-    "idiosyncratic",
-    "imminent",
-    "incisive",
-    "incompatible",
-    "incontrovertible",
-    "indiscriminate",
-    "insidious",
-    "intrepid",
-    "juxtapose",
-    "lethargic",
-    "magnanimous",
-    "mundane",
-    "obstinate",
-    "pervasive",
-    "quintessential",
-    "recalcitrant",
-    "redundant",
-    "resolute",
-    "reticent",
-    "sagacious",
-    "skeptical",
-    "stagnant",
-    "succinct",
-    "tacit",
-    "transient",
-    "unequivocal",
-    "vicarious",
-    "wary",
-    "debilitated",
-    "exemplary",
-    "aberration",
-    "abeyance",
-    "abjure",
-    "abrogate",
-    "accede",
-    "acquiescence",
-    "adulation",
-    "aesthetic",
-    "aggrandize",
-    "altruistic",
-    "anachronism",
-    "antipathy",
-    "apocryphal",
-    "arcane",
-    "assiduous",
-    "avarice",
-    "bellicose",
-    "cacophony",
-    "candor",
-    "capricious",
-    "catharsis",
-    "caustic",
-    "cogent",
-    "complacency",
-    "conciliatory",
-    "confluence",
-    "conjecture",
-    "contrite",
-    "convoluted",
-    "corroboration",
-    "credence",
-    "cursory",
-    "dearth",
-    "deleterious",
-    "demarcate",
-    "deride",
-    "desultory",
-    "dichotomy",
-    "diffident",
-    "disingenuous",
-    "dissonance",
-    "dogmatic",
-    "eclecticism",
-    "effrontery",
-    "enigmatic",
-    "epiphany",
-    "equivocation",
-    "esoteric",
-    "euphemism",
-    "exculpate",
-    "exigency",
-    "extol",
-    "fallacious",
-    "fastidiousness",
-    "fervent",
-    "florid",
-    "fortitude",
-    "fortuitousness",
-    "garrulous",
-    "hegemony",
-    "hubris",
-    "iconoclast",
-    "immutable",
-    "impasse",
-    "implacable",
-    "incongruity",
-    "indolent",
-    "inexorable",
-    "ingenuous",
-    "insipid",
-    "invective",
-    "laconic",
-    "magnanimity",
-    "mendacious",
-    "meticulousness",
-    "mollify",
-    "nebulous",
-    "obdurate",
-    "obfuscation",
-    "onerous",
-    "orthodoxy",
-    "ostensible",
-    "parochial",
-    "paucity",
-    "pedantic",
-    "penchant",
-    "perfidious",
-    "pernicious",
-    "perspicacious",
-    "platitude",
-    "polemic",
-    "portent",
-    "prevaricate",
-    "prodigious",
-    "propensity",
-    "quixotic",
-    "rancor",
-    "recalcitrance",
-    "reticence",
-    "sagacity",
-    "sanguine",
-    "scrupulous",
-    "sophistry",
-    "spurious",
-    "taciturn",
-    "temerity",
-    "tenuous",
-    "tirade",
-    "trenchant",
-    "vacillate",
-    "veracity",
-    "verbose",
-    "vociferous",
-    "aberrant",
-    "abstemious",
-    "acerbic",
-    "acquiescent",
-    "adroit",
-    "allegory",
-    "allusion",
-    "amalgamate",
-    "amorphous",
-    "anathema",
-    "ancillary",
-    "antecedent",
-    "aphorism",
-    "apocrypha",
-    "apposite",
-    "archetype",
-    "assiduity",
-    "bellicosity",
-    "bombastic",
-    "cacophonous",
-    "caprice",
-    "cathartic",
-    "circumspection",
-    "cogency",
-    "complacence",
-    "contentiousness",
-    "contrition",
-    "convolution",
-    "deleteriousness",
-    "dichotomous",
-    "diffidence",
-    "disingenuousness",
-    "euphemistic",
-    "exculpatory",
-    "exigent",
-    "fallacy",
-    "garrulity",
-    "iconoclastic",
-    "ineffability",
-    "inexorability",
-    "laconicism",
-    "magnanimousness",
-    "mendacity",
-    "nebulousness",
-    "obduracy",
-    "obfuscatory",
-    "parochialism",
-    "pedantry",
-    "perfidy",
-    "perniciousness",
-    "perspicacity",
-    "platitudinous",
-    "polemical",
-    "prevarication",
-    "prodigality",
-    "quixoticism",
-    "rancorous",
-    "recalcitrancy",
-    "sagaciousness",
-    "sanguinity",
-    "scrupulosity",
-    "sophistic",
-    "spuriousness",
-    "taciturnity",
-    "tenuousness",
-    "trenchantly",
-    "veracious",
-    "verbosity",
-    "vociferousness",
-    "be at odds with",
-    "be tantamount to",
-    "be emblematic of",
-    "be devoid of",
-    "be fraught with",
-    "be germane to",
-    "be commensurate with",
-    "be incumbent on",
-    "be inimical to",
-    "be predicated upon",
-    "be symptomatic of",
-    "be antithetical to",
-    "be synonymous with",
-    "be amenable to",
-    "be cognizant of",
-    "lend credence to",
-    "give credence to",
-    "call into doubt",
-    "run counter to",
-    "fly in the face of",
-    "fall short of",
-    "come to fruition",
-    "come to pass",
-    "come to the fore",
-    "bring to bear",
-    "bear testimony to",
-    "bear resemblance to",
-    "cast doubt on",
-    "cast light on",
-    "cast a shadow over",
-    "draw upon",
-    "draw on",
-    "draw inference from",
-    "take umbrage at",
-    "hold sway over",
-    "hold true for",
-    "hold in abeyance",
-    "make a case for",
-    "make allowances for",
-    "make light of",
-    "pay lip service to",
-    "pay heed to",
-    "pay tribute to",
-    "lay the groundwork for",
-    "set in motion",
-    "set the stage for",
-    "strike a balance between",
-    "strike a chord with",
-    "turn a blind eye to",
-    "turn a deaf ear to",
-    "at the expense of",
-    "at the behest of",
-    "at the discretion of",
-    "in the event of",
-    "in the aftermath of",
-    "in the realm of",
-    "in the guise of",
-    "in the vicinity of",
-    "in lieu of",
-    "in tandem with",
-    "in deference to",
-    "with a view to",
-    "with a view toward",
-    "with impunity",
-    "for all intents and purposes",
-    "by and large",
-    "to all intents and purposes",
-    "to that end",
-    "on the face of it",
-    "on the verge of",
-    "under the auspices of",
-    "under the guise of",
-    "beyond the scope of",
-    "beyond the realm of",
-    "wearability",
-    "vanguard",
-    "foray"
-  ]
-};
-
-function answerIndexSafe(q){
-  return answerIndex(q);
-}
-function looksJapaneseOption(t){
-  return looksJapanese(t);
-}
-function looksEnglishOption(t){
-  return looksEnglish(t);
-}
-
-// CEFR pool policy:
-// Each word belongs to only ONE level.
-// A2 excludes A1, B1 excludes A1/A2, B2 excludes A1/A2/B1, etc.
-// Therefore selecting B1 draws only from the B1 pool, not from easier-level pools.
-app.post("/api/vocabulary",requireKey,async(req,res)=>{try{
-  const level=String(req.body.level||"B1");
-  const topic=String(req.body.topic||"Daily conversation");
-  const mode=String(req.body.mode||"en-ja");
-
-  if(!["en-ja","ja-en","blank"].includes(mode)){
-    throw new Error("Vocabularyの出題形式が不正です。");
-  }
-
-  const count=Math.max(5,Math.min(15,Number(req.body.count)||10));
-
-  // recentWords は「これまで出題した単語」の履歴として扱う。
-  // ブラウザ側では最大1000語保存する。
-  const seenWords=Array.isArray(req.body.recentWords)
-    ? req.body.recentWords.map(x=>String(x||"").trim()).filter(Boolean).slice(-1000)
-    : [];
-
-  const weakWords=Array.isArray(req.body.weakWords)
-    ? req.body.weakWords.map(x=>({
-        word:String(x?.word||"").trim(),
-        meaning_ja:String(x?.meaning_ja||"").trim(),
-        count:Number(x?.count||1),
-        correctStreak:Number(x?.correctStreak||0)
-      })).filter(x=>x.word).slice(0,100)
-    : [];
-
-  const masteredWords=Array.isArray(req.body.masteredWords)
-    ? req.body.masteredWords.map(x=>String(x||"").trim()).filter(Boolean).slice(-1000)
-    : [];
-
-  const seenSet=new Set(seenWords.map(normalizeWord));
-  const masteredSet=new Set(masteredWords.map(normalizeWord));
-  const recentCooldownSet=new Set(seenWords.slice(-30).map(normalizeWord));
-
-  // 苦手復習は約20%。直近30語に出た苦手語は少し休ませる。
-  const eligibleWeak=weakWords
-    .filter(x=>{
-      const raw=String(x.word||"").trim();
-      const key=normalizeWord(raw);
-      return /^[A-Za-z][A-Za-z' -]*$/.test(raw) &&
-        key &&
-        !masteredSet.has(key) &&
-        !recentCooldownSet.has(key);
-    })
-    .sort((a,b)=>(b.count||0)-(a.count||0));
-
-  const desiredReview=Math.min(Math.round(count*.2),eligibleWeak.length);
-  const reviewTargets=eligibleWeak.slice(0,desiredReview).map(x=>({
-    word:x.word,
-    source:"review",
-    meaning_ja:x.meaning_ja||""
-  }));
-
-  const selectedKeys=new Set(reviewTargets.map(x=>normalizeWord(x.word)));
-  const levelPool=Array.isArray(VOCAB_POOLS[level])?VOCAB_POOLS[level]:VOCAB_POOLS.B1;
-
-  // まず「一度も出ていない単語」だけから選ぶ。
-  let unseenPool=levelPool.filter(word=>{
-    const key=normalizeWord(word);
-    return key &&
-      !seenSet.has(key) &&
-      !masteredSet.has(key) &&
-      !selectedKeys.has(key);
+async function postJson(url, body) {
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
   });
+  let data = {};
+  try { data = await r.json(); } catch {}
+  if (!r.ok) throw new Error(data.error || "通信エラー");
+  return data;
+}
 
-  // 毎回同じ順にならないようシャッフル。
-  for(let i=unseenPool.length-1;i>0;i--){
-    const j=Math.floor(Math.random()*(i+1));
-    [unseenPool[i],unseenPool[j]]=[unseenPool[j],unseenPool[i]];
+function commonSettings() {
+  return { level: $("level").value, topic: $("topic").value };
+}
+
+function loadListeningHistory() {
+  try {
+    const data = JSON.parse(localStorage.getItem(LISTENING_HISTORY_KEY) || "[]");
+    return Array.isArray(data) ? data.filter(Boolean).slice(-LISTENING_HISTORY_LIMIT) : [];
+  } catch { return []; }
+}
+
+function rememberListening(sentence) {
+  const text = String(sentence || "").trim();
+  if (!text) return;
+  const current = loadListeningHistory();
+  const map = new Map();
+  [...current, text].forEach(x => {
+    const s = String(x || "").trim();
+    if (s) map.set(s.toLowerCase().replace(/\s+/g, " "), s);
+  });
+  localStorage.setItem(LISTENING_HISTORY_KEY, JSON.stringify(Array.from(map.values()).slice(-LISTENING_HISTORY_LIMIT)));
+}
+
+function loadVocabHistory() {
+  try {
+    const data = JSON.parse(localStorage.getItem(VOCAB_HISTORY_KEY) || "[]");
+    return Array.isArray(data) ? data.filter(Boolean).slice(-VOCAB_HISTORY_LIMIT) : [];
+  } catch { return []; }
+}
+
+function rememberVocabWords(words) {
+  const map = new Map();
+  [...loadVocabHistory(), ...words].forEach(raw => {
+    const word = String(raw || "").trim();
+    if (word) map.set(word.toLowerCase(), word);
+  });
+  localStorage.setItem(VOCAB_HISTORY_KEY, JSON.stringify(Array.from(map.values()).slice(-VOCAB_HISTORY_LIMIT)));
+}
+
+function todayKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+
+function blankProgress() {
+  return { date: todayKey(), listening: 0, vocabulary: 0, writing: 0, reading: 0, correct: 0, total: 0, weakWords: {} };
+}
+
+function loadProgress() {
+  try {
+    const p = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+    if (!p || p.date !== todayKey()) return blankProgress();
+    return { ...blankProgress(), ...p, weakWords: p.weakWords || {} };
+  } catch { return blankProgress(); }
+}
+
+let progress = loadProgress();
+if (typeof progress.writing !== "number") progress.writing = 0;
+
+function saveProgress() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
+  renderProgress();
+}
+
+function addProgress(kind, correct=0, total=0) {
+  progress[kind] = (progress[kind] || 0) + 1;
+  progress.correct += correct;
+  progress.total += total;
+  saveProgress();
+}
+
+function addWeakWord(word, meaning="") {
+  if (!word) return;
+  const key = word.toLowerCase();
+  const old = progress.weakWords[key] || { word, meaning, count: 0 };
+  old.count += 1;
+  if (meaning) old.meaning = meaning;
+  progress.weakWords[key] = old;
+  recordVocabWrong(word, meaning);
+  saveProgress();
+}
+
+
+function loadVocabMastery() {
+  try {
+    const data = JSON.parse(localStorage.getItem(VOCAB_MASTERY_KEY) || "{}");
+    return data && typeof data === "object" && !Array.isArray(data) ? data : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveVocabMastery(data) {
+  localStorage.setItem(VOCAB_MASTERY_KEY, JSON.stringify(data || {}));
+}
+
+function vocabMasteryKey(word) {
+  return String(word || "").trim().toLowerCase();
+}
+
+function recordVocabWrong(word, meaning = "") {
+  const key = vocabMasteryKey(word);
+  if (!key) return;
+
+  const data = loadVocabMastery();
+  const old = data[key] || {
+    word: String(word || "").trim(),
+    meaning: String(meaning || ""),
+    wrongCount: 0,
+    correctStreak: 0,
+    mastered: false
+  };
+
+  old.word = String(word || old.word || "").trim();
+  if (meaning) old.meaning = String(meaning);
+  old.wrongCount = (old.wrongCount || 0) + 1;
+  old.correctStreak = 0;
+  old.mastered = false;
+
+  data[key] = old;
+  saveVocabMastery(data);
+}
+
+function recordVocabCorrect(word, meaning = "") {
+  const key = vocabMasteryKey(word);
+  if (!key) return false;
+
+  const data = loadVocabMastery();
+  const old = data[key];
+
+  // 「苦手問題」として登録済みの単語だけ連続正解を数える。
+  if (!old || old.mastered || !(old.wrongCount > 0)) {
+    return false;
   }
 
-  const neededNew=count-reviewTargets.length;
-  const newTargets=[];
+  if (meaning) old.meaning = String(meaning);
+  old.correctStreak = (old.correctStreak || 0) + 1;
 
-  for(const word of unseenPool){
-    if(newTargets.length>=neededNew)break;
-    newTargets.push({word,source:"new",meaning_ja:""});
-    selectedKeys.add(normalizeWord(word));
-  }
+  if (old.correctStreak >= 3) {
+    old.correctStreak = 3;
+    old.mastered = true;
 
-  // 未出題プールが尽きた場合だけ、過去語を再利用する。
-  // ただし mastered と直近30語は除外する。
-  if(newTargets.length<neededNew){
-    let fallback=levelPool.filter(word=>{
-      const key=normalizeWord(word);
-      return key &&
-        !masteredSet.has(key) &&
-        !recentCooldownSet.has(key) &&
-        !selectedKeys.has(key);
-    });
-
-    for(let i=fallback.length-1;i>0;i--){
-      const j=Math.floor(Math.random()*(i+1));
-      [fallback[i],fallback[j]]=[fallback[j],fallback[i]];
-    }
-
-    for(const word of fallback){
-      if(newTargets.length>=neededNew)break;
-      newTargets.push({word,source:"recycle",meaning_ja:""});
-      selectedKeys.add(normalizeWord(word));
-    }
-  }
-
-  const targets=[...reviewTargets,...newTargets].filter(x =>
-    /^[A-Za-z][A-Za-z' -]*$/.test(String(x.word || "").trim())
-  );
-
-  if(targets.length<count){
-    throw new Error(
-      `利用できる単語プールが不足しています。${targets.length}/${count}問まで準備できました。`
-    );
-  }
-
-  // AIには「単語を選ばせない」。
-  // サーバーが決めた target word or phrases について問題文・選択肢・例文だけ作らせる。
-  const targetText=targets.map((x,i)=>
-    `${i+1}. ${x.word}${x.meaning_ja?` | known Japanese meaning: ${x.meaning_ja}`:""}`
-  ).join("\n");
-
-  const modeRule=mode==="blank"
-    ? `MODE blank:
-- prompt: one natural English sentence containing exactly one _____
-- options: exactly four English words/short phrases
-- correct option must be exactly the target word or phrase
-- word: exactly the target word or phrase or phrase
-- meaning_ja: natural Japanese meaning
-- context: empty string`
-    : mode==="ja-en"
-    ? `MODE ja-en:
-- prompt: natural Japanese meaning of the target word or phrase
-- options: exactly four English words/short phrases
-- correct option must be exactly the target word or phrase
-- word: exactly the target word or phrase or phrase
-- meaning_ja: natural Japanese meaning
-- context: one natural English example sentence containing the target word or phrase`
-    : `MODE en-ja:
-- prompt: exactly the target English word or phrase/phrase
-- options: exactly four Japanese meanings
-- correct option is the natural Japanese meaning of the target
-- word: exactly the target word or phrase or phrase
-- meaning_ja: natural Japanese meaning
-- context: one natural English example sentence containing the target word or phrase`;
-
-  async function generateFor(targetSubset){
-    const subsetText=targetSubset.map((x,i)=>
-      `${i+1}. ${x.word}${x.meaning_ja?` | known Japanese meaning: ${x.meaning_ja}`:""}`
-    ).join("\n");
-
-    const prompt=`Create vocabulary questions for a Japanese learner.
-
-CEFR: ${level}
-Topic for example sentences and distractors: ${topic}
-
-IMPORTANT:
-The server has ALREADY selected the target word or phrases.
-DO NOT choose or replace target vocabulary.
-Each target may be either ONE English word or a fixed multi-word expression such as a phrasal verb, prepositional combination, collocation, or idiom.
-DO NOT shorten, expand, or replace the assigned target. Use it exactly as provided.
-Create exactly ONE question for EACH target below, in the SAME ORDER.
-
-TARGETS:
-${subsetText}
-
-${modeRule}
-
-Return ONLY valid JSON:
-{"questions":[{"prompt":"...","context":"...","options":["...","...","...","..."],"answer_index":0,"word":"exact target","meaning_ja":"...","explanation_ja":"short Japanese explanation"}]}
-
-Rules:
-- exactly ${targetSubset.length} questions
-- exactly 4 options each
-- word must exactly match its assigned target
-- no duplicate options
-- CEFR-appropriate explanations
-- context is only an example shown AFTER answering; it must not redefine the word's only acceptable meaning
-- no markdown
-- no text outside JSON`;
-
-    const data=await generateJson(prompt);
-    return Array.isArray(data.questions)?data.questions:[];
-  }
-
-  function validateExact(raw,target){
-    if(!raw||typeof raw!=="object")return null;
-
-    const word=String(raw.word||"").trim();
-    if(normalizeWord(word)!==normalizeWord(target.word))return null;
-
-    const prompt=String(raw.prompt||"").trim();
-    const context=String(raw.context||"").trim();
-    const meaningJa=String(raw.meaning_ja||"").trim();
-    const explanationJa=String(raw.explanation_ja||"").trim();
-    const options=Array.isArray(raw.options)?raw.options.map(x=>String(x||"").trim()):[];
-    const answerIndex=answerIndexSafe(raw);
-
-    if(options.length!==4||options.some(x=>!x)||new Set(options.map(x=>x.toLowerCase())).size!==4||answerIndex===null){
-      return null;
-    }
-
-    if(mode==="en-ja"){
-      if(normalizeWord(prompt)!==normalizeWord(target.word))return null;
-      if(!options.every(looksJapaneseOption))return null;
-    }
-
-    if(mode==="ja-en"){
-      if(!hasJapanese(prompt))return null;
-      if(!options.every(looksEnglishOption))return null;
-      if(normalizeWord(options[answerIndex])!==normalizeWord(target.word))return null;
-    }
-
-    if(mode==="blank"){
-      if((prompt.match(/_____/g)||[]).length!==1)return null;
-      if(!hasLatin(prompt)||hasJapanese(prompt))return null;
-      if(!options.every(looksEnglishOption))return null;
-      if(normalizeWord(options[answerIndex])!==normalizeWord(target.word))return null;
-    }
-
-    return {
-      prompt,
-      context,
-      options,
-      answer_index:answerIndex,
-      word:target.word,
-      meaning_ja:meaningJa||target.meaning_ja||"",
-      explanation_ja:explanationJa,
-      source:target.source
-    };
-  }
-
-  const resultByKey=new Map();
-
-  // まず全ターゲットを一括生成。
-  try{
-    const raw=await generateFor(targets);
-    for(let i=0;i<Math.min(raw.length,targets.length);i++){
-      const q=validateExact(raw[i],targets[i]);
-      if(q)resultByKey.set(normalizeWord(targets[i].word),q);
-    }
-  }catch(e){
-    console.warn("Vocabulary batch generation failed:",e.message);
-  }
-
-  // 不足分だけを最大3回リトライ。
-  for(let round=0;round<3;round++){
-    const missing=targets.filter(x=>!resultByKey.has(normalizeWord(x.word)));
-    if(!missing.length)break;
-
-    try{
-      const raw=await generateFor(missing);
-      for(let i=0;i<Math.min(raw.length,missing.length);i++){
-        const q=validateExact(raw[i],missing[i]);
-        if(q)resultByKey.set(normalizeWord(missing[i].word),q);
-      }
-    }catch(e){
-      console.warn(`Vocabulary refill ${round+1} failed:`,e.message);
+    // Progress画面の苦手単語表示からも外す。
+    if (progress.weakWords && progress.weakWords[key]) {
+      delete progress.weakWords[key];
     }
   }
 
-  const final=targets
-    .map(x=>resultByKey.get(normalizeWord(x.word)))
+  data[key] = old;
+  saveVocabMastery(data);
+  saveProgress();
+
+  return Boolean(old.mastered);
+}
+
+function getWeakWordsForReview(limit = 40) {
+  return Object.values(loadVocabMastery())
+    .filter(w => w && !w.mastered && (w.wrongCount || 0) > 0)
+    .sort((a, b) => (b.wrongCount || 0) - (a.wrongCount || 0))
+    .slice(0, limit)
+    .map(w => ({
+      word: w.word,
+      meaning_ja: w.meaning || "",
+      count: w.wrongCount || 1,
+      correctStreak: w.correctStreak || 0
+    }));
+}
+
+function getMasteredWords(limit = 500) {
+  return Object.values(loadVocabMastery())
+    .filter(w => w && w.mastered)
+    .slice(-limit)
+    .map(w => w.word)
     .filter(Boolean);
+}
 
-  if(final.length<count){
-    throw new Error(
-      `問題生成に失敗しました。${final.length}/${count}問まで作成できました。もう一度お試しください。`
-    );
-  }
+function renderProgress() {
+  $("statListening").textContent = progress.listening;
+  $("statVocabulary").textContent = progress.vocabulary;
+  $("statWriting").textContent = progress.writing || 0;
+  $("statReading").textContent = progress.reading;
+  $("todayTotal").textContent = progress.listening + progress.vocabulary + (progress.writing || 0) + progress.reading;
+  $("statAccuracy").textContent = progress.total ? `${Math.round(progress.correct/progress.total*100)}%` : "—";
+  const words = Object.values(progress.weakWords).sort((a,b)=>b.count-a.count).slice(0,30);
+  $("weakWords").innerHTML = words.length
+    ? words.map(w=>`<span class="weak-word">${escapeHtml(w.word)}${w.meaning?` — ${escapeHtml(w.meaning)}`:""} ×${w.count}</span>`).join("")
+    : `<span class="muted">まだ記録はありません。</span>`;
+}
 
-  // 復習問題の位置が固定されないよう最後にシャッフル。
-  for(let i=final.length-1;i>0;i--){
-    const j=Math.floor(Math.random()*(i+1));
-    [final[i],final[j]]=[final[j],final[i]];
-  }
-
-  res.json({
-    questions:final,
-    pool_info:{
-      level,
-      unseen_remaining:Math.max(0,unseenPool.length-newTargets.filter(x=>x.source==="new").length),
-      review_count:reviewTargets.length,
-      new_count:newTargets.filter(x=>x.source==="new").length,
-      recycled_count:newTargets.filter(x=>x.source==="recycle").length
-    }
+document.querySelectorAll(".tab").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+    document.querySelectorAll(".tab-page").forEach(x=>x.classList.add("hidden"));
+    btn.classList.add("active");
+    $(`tab-${btn.dataset.tab}`).classList.remove("hidden");
+    if (btn.dataset.tab === "progress") renderProgress();
   });
+});
 
-}catch(e){
-  console.error(e);
-  res.status(500).json({error:e.message||"単語問題の作成に失敗しました。"});
-}});
+/* Listening */
+function clearListeningAudio() {
+  if (listeningAudioUrl) URL.revokeObjectURL(listeningAudioUrl);
+  listeningAudioUrl = null;
+  $("audio").removeAttribute("src");
+  $("audio").load();
+}
 
-app.post("/api/vocabulary-check",requireKey,async(req,res)=>{try{
-  const mode=String(req.body.mode||""),prompt=String(req.body.prompt||""),context=String(req.body.context||""),word=String(req.body.word||""),meaningJa=String(req.body.meaning_ja||""),userAnswer=String(req.body.userAnswer||"").trim();if(!["en-ja","ja-en","blank"].includes(mode))return res.status(400).json({error:"Vocabularyの出題形式が不正です。"});if(!userAnswer)return res.status(400).json({error:"回答が入力されていません。"});
-  const rule=mode==="en-ja"?`
-The learner saw an English word or phrase and answered in Japanese.
+function resetListeningMode() {
+  listening = null;
+  listeningMcqRevealed = false;
+  clearListeningAudio();
+  $("listeningResult").classList.add("hidden");
+  $("dictationAnswer").value = "";
+  $("dictationAnswer").disabled = true;
+  $("dictationCheckBtn").disabled = true;
+  $("translationAnswer").value = "";
+  $("translationAnswer").disabled = true;
+  $("translationCheckBtn").disabled = true;
+  $("translationYourAnswer").classList.add("hidden");
+  $("dictationYourAnswer").classList.add("hidden");
+  $("playBtn").disabled = true;
+  $("listeningMcqPanel").classList.add("hidden");
+  $("listeningQuestions").innerHTML = "";
+  $("listeningMcqCheckBtn").disabled = true;
+  $("dictationPanel").classList.toggle("hidden", $("listeningMode").value !== "dictation");
+  $("translationPanel").classList.toggle("hidden", $("listeningMode").value !== "translation");
+  $("listeningStatus").textContent = "「新しい問題」を押してください";
+}
 
-Judge ONLY whether the learner's Japanese answer is a legitimate dictionary meaning
-or natural Japanese translation of the target English word or phrase or phrase.
-
-IMPORTANT:
-- Ignore the example sentence and Context completely.
-- Do not require the meaning used in the example sentence.
-- If the learner gives ANY common, established dictionary meaning of the target word or phrase or phrase, mark it correct.
-- Accept natural Japanese synonyms and paraphrases.
-- Reject only meanings that are genuinely not meanings of the target word or phrase or phrase.
-`:mode==="ja-en"?`
-The learner saw a Japanese meaning and answered in English.
-
-Judge ONLY whether the English answer is a legitimate translation of the displayed Japanese prompt.
-
-IMPORTANT:
-- Ignore the example sentence and Context completely.
-- Accept genuinely equivalent English words or phrases.
-- Minor spelling errors may be accepted only if the intended word is unmistakable and no different word is created.
-`:`The learner filled an English sentence blank. For blank mode only, use the sentence context. Accept an alternative only if it fits this exact sentence naturally, grammatically and semantically.`;
-
-  const gradingContext=(mode==="blank")?(context||"(none)"):"(IGNORE CONTEXT FOR THIS MODE)";
-  const p=`Grade one vocabulary answer. Mode: ${mode}. Prompt: ${prompt}. Context: ${gradingContext}. Target English: ${word}. Target Japanese meaning: ${meaningJa}. Learner answer: ${userAnswer}. ${rule} Be fair but not over-generous. For en-ja, a valid dictionary meaning must be marked correct even if it differs from the meaning suggested by the later example sentence. For ja-en, judge only the displayed Japanese meaning. Only blank mode is context-sensitive.
-
-When the learner answer is incorrect, also explain what the learner's answer itself normally means:
-- en-ja: the learner answered in Japanese. actual_meaning should state in English what that Japanese answer means.
-- ja-en: the learner answered in English. actual_meaning should state in Japanese what that English word/phrase means.
-- blank: actual_meaning should state in Japanese what the learner's English answer means.
-If correct, actual_meaning must be an empty string.
-
-Return ONLY JSON {"correct":true,"score":100,"feedback_ja":"short Japanese feedback","accepted_answer":"best standard answer","actual_meaning":"meaning of the learner answer in the opposite language, or empty string if correct"}. score integer 0-100; >=80 means correct, <80 incorrect; no markdown.`;
-  const d=await generateJson(p);const score=Math.max(0,Math.min(100,Math.round(Number(d.score)||0)));res.json({
-    correct:score>=80,
-    score,
-    feedback_ja:String(d.feedback_ja||""),
-    accepted_answer:String(d.accepted_answer||(mode==="en-ja"?meaningJa:word)),
-    actual_meaning:score>=80 ? "" : String(d.actual_meaning||"")
-  });
-}catch(e){console.error(e);res.status(500).json({error:e.message||"回答判定に失敗しました。"});}});
-
-
-app.post("/api/writing", requireKey, async(req,res)=>{
-  try{
-    const level = String(req.body.level || "B1");
-    const topic = String(req.body.topic || "Daily conversation");
-    const count = Math.max(3, Math.min(10, Number(req.body.count) || 5));
-    const mode = req.body.mode === "en-ja" ? "en-ja" : "ja-en";
-
-    const directionRule = mode === "ja-en"
-      ? `Create Japanese-to-English translation exercises.
-- source_text must be a short, natural JAPANESE sentence.
-- reference_answer must be ONE natural ENGLISH translation at CEFR ${level}.
-- explanation_ja should briefly explain useful English grammar/vocabulary.`
-      : `Create English-to-Japanese translation exercises.
-- source_text must be a short, natural ENGLISH sentence at CEFR ${level}.
-- reference_answer must be ONE natural JAPANESE translation.
-- explanation_ja should briefly explain the English expression/grammar and how it maps into Japanese.`;
-
-    const prompt = `Create ${count} translation exercises for a Japanese learner.
-CEFR level: ${level}
-Topic: ${topic}
-Direction: ${mode}
-
-${directionRule}
-
-Requirements:
-- Keep each source sentence short and practical.
-- Prefer everyday/practical communication rather than literary language.
-- Keep each item focused on one main sentence pattern or meaning unit.
-- Make the questions meaningfully different from each other.
-- Avoid proper nouns unless necessary.
-- The reference answer is only one example; semantically equivalent translations may also be valid.
-- key_points: 1 to 3 short Japanese learning points.
-
-Return ONLY JSON:
-{"questions":[
-  {"source_text":"...","reference_answer":"...","explanation_ja":"...","key_points":["..."]}
-]}
-No markdown.`;
-
-    const data = await generateJson(prompt);
-    if(!data || !Array.isArray(data.questions) || data.questions.length !== count){
-      throw new Error("翻訳問題の形式が正しくありません。");
+$("listeningMode").addEventListener("change", resetListeningMode);
+$("newListeningBtn").addEventListener("click", async () => {
+  const btn = $("newListeningBtn");
+  try {
+    btn.disabled = true;
+    resetListeningMode();
+    $("listeningStatus").classList.remove("error");
+    $("listeningStatus").textContent = "AIが問題を作成しています…";
+    listening = await postJson("/api/listening", {
+      ...commonSettings(),
+      mode: $("listeningMode").value,
+      length: $("listeningLength").value,
+      recentListening: loadListeningHistory()
+    });
+    if (!listening?.sentence) throw new Error("Listening問題を生成できませんでした。");
+    rememberListening(listening.sentence);
+    if ($("listeningMode").value === "dictation") {
+      $("dictationPanel").classList.remove("hidden");
+      $("dictationAnswer").disabled = false;
+      $("dictationCheckBtn").disabled = false;
+      $("listeningStatus").textContent = "準備できました。音声を再生してください。";
+    } else if ($("listeningMode").value === "translation") {
+      $("translationPanel").classList.remove("hidden");
+      $("translationAnswer").disabled = false;
+      $("translationCheckBtn").disabled = false;
+      $("listeningStatus").textContent = "準備できました。音声を聞いて、日本語訳を入力してください。";
+    } else {
+      $("listeningStatus").textContent = "準備できました。まず音声を最後まで聞いてください。";
     }
-    for(const q of data.questions){
-      if(!q?.source_text || !q?.reference_answer) throw new Error("翻訳問題に不足があります。");
+    $("playBtn").disabled = false;
+  } catch(e) {
+    $("listeningStatus").textContent = e.message;
+    $("listeningStatus").classList.add("error");
+  } finally { btn.disabled = false; }
+});
+
+async function playListening() {
+  if (!listening) return;
+  const play = $("playBtn"), audio = $("audio");
+  try {
+    play.disabled = true;
+    $("listeningStatus").classList.remove("error");
+    if (!listeningAudioUrl) {
+      $("listeningStatus").textContent = "音声を準備しています…";
+      const r = await fetch("/api/speech", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({text:listening.sentence}) });
+      if (!r.ok) { let msg="音声生成に失敗しました。"; try{msg=(await r.json()).error||msg}catch{}; throw new Error(msg); }
+      listeningAudioUrl = URL.createObjectURL(await r.blob());
+      audio.src = listeningAudioUrl;
     }
-    res.json(data);
-  }catch(e){
-    console.error(e);
-    res.status(500).json({error:e.message || "翻訳問題の作成に失敗しました。"});
+    audio.playbackRate = listeningSpeed;
+    audio.currentTime = 0;
+    audio.onended = () => {
+      if ($("listeningMode").value === "mcq") {
+        if (!listeningMcqRevealed) {
+          renderListeningQuestions();
+          $("listeningMcqPanel").classList.remove("hidden");
+          listeningMcqRevealed = true;
+          $("listeningMcqPanel").scrollIntoView({behavior:"smooth",block:"start"});
+        }
+        $("listeningStatus").textContent = "内容について3問に答えてください。";
+      } else if ($("listeningMode").value === "translation") {
+        $("listeningStatus").textContent = "聞こえた内容を日本語に訳して入力してください。";
+        $("translationAnswer").focus();
+      } else $("listeningStatus").textContent = "聞こえた英文を入力してください。";
+    };
+    await audio.play();
+    $("listeningStatus").textContent = "再生中…";
+  } catch(e) {
+    $("listeningStatus").textContent = e.message;
+    $("listeningStatus").classList.add("error");
+  } finally { play.disabled = false; }
+}
+
+$("playBtn").addEventListener("click", playListening);
+
+document.querySelectorAll(".speed").forEach(btn=>btn.addEventListener("click",()=>{document.querySelectorAll(".speed").forEach(x=>x.classList.remove("active"));btn.classList.add("active");listeningSpeed=Number(btn.dataset.speed);}));
+
+function questionHtml(q,i,prefix){return `<div class="question-card"><div class="question-title">Q${i+1}. ${escapeHtml(q.question)}</div><div class="option-list">${q.options.map((o,j)=>`<label class="option"><input type="radio" name="${prefix}${i}" value="${j}"><span><strong>${String.fromCharCode(65+j)}.</strong> ${escapeHtml(o)}</span></label>`).join("")}</div></div>`;}
+
+function renderListeningQuestions(){
+  $("listeningQuestions").innerHTML=(listening.questions||[]).map((q,i)=>questionHtml(q,i,"lq")).join("");
+  document.querySelectorAll('input[name^="lq"]').forEach(input=>input.addEventListener("change",()=>{$("listeningMcqCheckBtn").disabled=!(listening.questions||[]).every((_,i)=>document.querySelector(`input[name="lq${i}"]:checked`));}));
+}
+
+function normalize(s){return String(s).toLowerCase().replace(/[’']/g,"'").replace(/[^\p{L}\p{N}' ]/gu," ").replace(/\s+/g," ").trim();}
+function wordLevenshtein(a,b){const A=normalize(a).split(" "),B=normalize(b).split(" "),dp=Array.from({length:A.length+1},()=>Array(B.length+1).fill(0));for(let i=0;i<=A.length;i++)dp[i][0]=i;for(let j=0;j<=B.length;j++)dp[0][j]=j;for(let i=1;i<=A.length;i++)for(let j=1;j<=B.length;j++){const c=A[i-1]===B[j-1]?0:1;dp[i][j]=Math.min(dp[i-1][j]+1,dp[i][j-1]+1,dp[i-1][j-1]+c);}return{dist:dp[A.length][B.length],max:Math.max(A.length,B.length,1)}}
+function dictationScore(correct,user){const x=wordLevenshtein(correct,user);return Math.max(0,Math.round((1-x.dist/x.max)*100));}
+
+function showListeningBase(){
+  $("listeningTranscript").textContent=listening.sentence;
+  $("listeningTranslation").textContent=listening.translation;
+  $("listeningTip").textContent=listening.listening_tip||"";
+  $("listeningResult").classList.remove("hidden");
+  $("listeningResult").scrollIntoView({behavior:"smooth",block:"start"});
+}
+
+$("dictationCheckBtn").addEventListener("click",async()=>{
+  if(!listening||!$("dictationAnswer").value.trim())return;
+  const user=$("dictationAnswer").value.trim(),score=dictationScore(listening.sentence,user);
+  $("listeningScore").textContent=`${score}%`;$("listeningScoreLabel").textContent="Dictation score";$("listeningScoreMsg").textContent=score>=95?"Excellent!":score>=80?"かなり聞き取れています。":score>=60?"あと少しです。":"正解を確認して聞き直しましょう。";
+  $("dictationYourAnswer").classList.remove("hidden");$("dictationYourAnswerText").textContent=user;$("listeningReview").classList.add("hidden");$("listeningCoach").classList.remove("hidden");showListeningBase();
+  $("listeningFeedback").textContent="AIが解説を生成しています…";$("listeningFocus").innerHTML="";addProgress("listening",score>=80?1:0,1);$("dictationCheckBtn").disabled=true;
+  try{const x=await postJson("/api/explain",{sentence:listening.sentence,answer:user});$("listeningFeedback").textContent=x.feedback;$("listeningFocus").innerHTML=(x.focus||[]).map(i=>`<li>${escapeHtml(i)}</li>`).join("");}catch{$("listeningFeedback").textContent="AI解説の取得に失敗しました。";}
+});
+
+$("translationCheckBtn").addEventListener("click", async () => {
+  if (!listening || !$("translationAnswer").value.trim()) return;
+  const user = $("translationAnswer").value.trim();
+  $("translationCheckBtn").disabled = true;
+  $("translationAnswer").disabled = true;
+  $("listeningScore").textContent = "…";
+  $("listeningScoreLabel").textContent = "Translation";
+  $("listeningScoreMsg").textContent = "AIが意味を判定しています…";
+  $("dictationYourAnswer").classList.add("hidden");
+  $("translationYourAnswer").classList.remove("hidden");
+  $("translationYourAnswerText").textContent = user;
+  $("listeningReview").classList.add("hidden");
+  $("listeningCoach").classList.remove("hidden");
+  showListeningBase();
+  $("listeningFeedback").textContent = "AIが解説を生成しています…";
+  $("listeningFocus").innerHTML = "";
+  try {
+    const x = await postJson("/api/listening-translation-check", {
+      sentence: listening.sentence,
+      referenceTranslation: listening.translation,
+      answer: user
+    });
+    const good = !!x.correct;
+    $("listeningScore").textContent = good ? "✓" : "△";
+    $("listeningScoreLabel").textContent = good ? "Meaning understood" : "Needs review";
+    $("listeningScoreMsg").textContent = x.summary || (good ? "内容を正しく捉えています。" : "意味の取り違えがあります。");
+    $("listeningFeedback").textContent = x.feedback || "";
+    $("listeningFocus").innerHTML = (x.focus || []).map(i=>`<li>${escapeHtml(i)}</li>`).join("");
+    addProgress("listening", good ? 1 : 0, 1);
+  } catch(e) {
+    $("listeningScore").textContent = "—";
+    $("listeningScoreLabel").textContent = "Translation";
+    $("listeningScoreMsg").textContent = "判定に失敗しました。";
+    $("listeningFeedback").textContent = e.message || "AI判定の取得に失敗しました。";
+    $("translationCheckBtn").disabled = false;
+    $("translationAnswer").disabled = false;
   }
 });
 
-app.post("/api/writing-check", requireKey, async(req,res)=>{
-  try{
-    const level = String(req.body.level || "B1");
-    const mode = req.body.mode === "en-ja" ? "en-ja" : "ja-en";
-    const sourceText = String(req.body.source_text || "").trim();
-    const reference = String(req.body.reference_answer || "").trim();
-    const userAnswer = String(req.body.user_answer || "").trim();
-    if(!sourceText || !userAnswer) return res.status(400).json({error:"問題文または回答がありません。"});
+$("listeningMcqCheckBtn").addEventListener("click",()=>{
+  let correctCount=0;
+  const html=(listening.questions||[]).map((q,i)=>{const s=document.querySelector(`input[name="lq${i}"]:checked`);if(!s)return"";const si=Number(s.value),ai=Number(q.answer_index);if(si===ai)correctCount++;return `<div class="review-card ${si===ai?"review-correct":"review-wrong"}"><div class="question-title">Q${i+1}. ${escapeHtml(q.question)}</div><p><strong>Your answer:</strong> ${String.fromCharCode(65+si)}. ${escapeHtml(q.options[si])}</p><p><strong>Correct:</strong> ${String.fromCharCode(65+ai)}. ${escapeHtml(q.options[ai])}</p><p>${escapeHtml(q.explanation_ja||"")}</p></div>`;}).join("");
+  const total=(listening.questions||[]).length;$("listeningScore").textContent=`${correctCount}/${total}`;$("listeningScoreLabel").textContent="Comprehension score";$("listeningScoreMsg").textContent=correctCount===total?"Excellent!":correctCount>=Math.ceil(total*.67)?"Good! もう一度聞くとさらに定着します。":"スクリプトを確認して聞き直しましょう。";$("dictationYourAnswer").classList.add("hidden");$("translationYourAnswer").classList.add("hidden");$("listeningReview").innerHTML=html;$("listeningReview").classList.remove("hidden");$("listeningCoach").classList.add("hidden");showListeningBase();addProgress("listening",correctCount,total);$("listeningMcqCheckBtn").disabled=true;$("listeningQuestions").querySelectorAll("input").forEach(x=>x.disabled=true);
+});
+$("nextListeningBtn").addEventListener("click",()=>$("newListeningBtn").click());
 
-    const direction = mode === "ja-en"
-      ? "The source is Japanese and the learner must translate it into English."
-      : "The source is English and the learner must translate it into Japanese.";
+/* Vocabulary */
+const vocabAudioCache = new Map();
 
-    const gradingRules = mode === "ja-en"
-      ? `- Judge whether the English accurately conveys the Japanese meaning.
-- Do NOT require an exact match to the reference answer.
-- Accept different English vocabulary, word order, contractions, and natural paraphrases when meaning is preserved.
-- Minor punctuation/capitalization mistakes should not make an otherwise correct answer wrong.
-- At lower CEFR levels, accept simple but grammatically acceptable English.
-- A meaningful grammar error that changes or obscures the intended meaning should be incorrect.`
-      : `- Judge whether the Japanese accurately conveys the English meaning.
-- Do NOT require an exact match to the reference Japanese translation.
-- Accept natural Japanese paraphrases and omitted subjects when natural in Japanese.
-- Accept different wording when the core meaning is preserved.
-- Do not penalize differences in politeness level unless they materially change the communicative intent.
-- Minor kana/kanji/spacing variation should not make an otherwise correct answer wrong.
-- A meaningful error in negation, subject/object relationship, tense/time, modality, quantity, condition, or core vocabulary meaning should be incorrect.`;
-
-    const prompt = `You are grading a translation by a Japanese learner.
-Target CEFR level: ${level}
-${direction}
-
-Source text:
-${sourceText}
-
-One reference answer:
-${reference}
-
-Learner answer:
-${userAnswer}
-
-${gradingRules}
-
-Return ONLY JSON:
-{
-  "correct": true,
-  "feedback_ja": "日本語で簡潔なフィードバック",
-  "reference_answer": "a natural correct answer in the target language",
-  "natural_answer": "a natural corrected version of the learner answer in the target language",
-  "points": ["短い学習ポイント"]
+function syncVocabPronunciationButton(){
+  const btn = $("vocabPronounceBtn");
+  if(!btn) return;
+  const q = vocabSet?.[vocabIndex];
+  const show = $("vocabMode").value === "en-ja" && q && q.word;
+  btn.classList.toggle("hidden", !show);
+  btn.disabled = !show;
 }
-No markdown.`;
 
-    const data = await generateJson(prompt);
-    res.json({
-      correct:Boolean(data.correct),
-      feedback_ja:String(data.feedback_ja || ""),
-      reference_answer:String(data.reference_answer || reference),
-      natural_answer:String(data.natural_answer || ""),
-      points:Array.isArray(data.points) ? data.points.slice(0,3) : []
+async function playVocabPronunciation(){
+  const q = vocabSet?.[vocabIndex];
+  if(!q || $("vocabMode").value !== "en-ja" || !q.word) return;
+
+  const btn = $("vocabPronounceBtn");
+  const audio = $("vocabAudio");
+  const text = String(q.word).trim();
+  if(!text) return;
+
+  try{
+    btn.disabled = true;
+    btn.textContent = "🔊 準備中…";
+
+    let url = vocabAudioCache.get(text.toLowerCase());
+    if(!url){
+      const r = await fetch("/api/speech", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({text})
+      });
+      if(!r.ok){
+        let msg = "音声生成に失敗しました。";
+        try{ msg = (await r.json()).error || msg; }catch{}
+        throw new Error(msg);
+      }
+      url = URL.createObjectURL(await r.blob());
+      vocabAudioCache.set(text.toLowerCase(), url);
+    }
+
+    audio.src = url;
+    audio.currentTime = 0;
+    await audio.play();
+  }catch(e){
+    console.error(e);
+    alert(e.message || "発音の再生に失敗しました。");
+  }finally{
+    btn.disabled = false;
+    btn.textContent = "🔊 発音を聞く";
+  }
+}
+
+$("vocabPronounceBtn").addEventListener("click", playVocabPronunciation);
+$("vocabMode").addEventListener("change", syncVocabPronunciationButton);
+$("vocabCount").addEventListener("change",()=>{$("newVocabBtn").textContent=`＋ ${$("vocabCount").value}問作る`;});
+$("newVocabBtn").addEventListener("click",generateVocab);$("vocabAgainBtn").addEventListener("click",generateVocab);
+
+async function generateVocab(){
+  const btn=$("newVocabBtn");
+  try{
+    btn.disabled=true;$("vocabStart").classList.remove("hidden");$("vocabStart").innerHTML=`<div class="empty-icon">⏳</div><h2>問題を作成しています…</h2>`;$("vocabQuiz").classList.add("hidden");$("vocabSummary").classList.add("hidden");
+    const data=await postJson("/api/vocabulary",{...commonSettings(),mode:$("vocabMode").value,count:Number($("vocabCount").value),recentWords:loadVocabHistory(),weakWords:getWeakWordsForReview(),masteredWords:getMasteredWords()});
+    vocabSet=data.questions||[];if(!vocabSet.length)throw new Error("問題を生成できませんでした。");rememberVocabWords(vocabSet.map(q=>q.word));vocabIndex=0;vocabCorrect=0;vocabMistakes=[];vocabAnswered=false;$("vocabStart").classList.add("hidden");$("vocabQuiz").classList.remove("hidden");renderVocabQuestion();$("vocabQuiz").scrollIntoView({behavior:"smooth",block:"start"});
+  }catch(e){$("vocabStart").classList.remove("hidden");$("vocabStart").innerHTML=`<div class="empty-icon">⚠️</div><h2>エラー</h2><p class="error">${escapeHtml(e.message)}</p>`;}finally{btn.disabled=false;}
+}
+
+function renderVocabQuestion(){
+  const q=vocabSet[vocabIndex],total=vocabSet.length,answerMode=$("vocabAnswerMode").value;vocabAnswered=false;
+  syncVocabPronunciationButton();$("vocabProgress").textContent=`${vocabIndex+1} / ${total}`;$("vocabRunningScore").textContent=`Score ${vocabCorrect}`;$("vocabBar").style.width=`${vocabIndex/total*100}%`;$("vocabPrompt").textContent=q.prompt;$("vocabContext").textContent="";$("vocabContext").classList.add("hidden");$("vocabFeedback").classList.add("hidden");$("vocabNextBtn").classList.add("hidden");$("vocabInputAnswer").value="";$("vocabInputAnswer").disabled=false;$("vocabInputSubmitBtn").disabled=false;$("vocabGiveUpBtn").disabled=false;
+  if(answerMode==="choice"){
+    $("vocabOptions").classList.remove("hidden");$("vocabInputArea").classList.add("hidden");$("vocabOptions").innerHTML=q.options.map((o,i)=>`<button class="option vocab-choice" data-index="${i}"><span><strong>${String.fromCharCode(65+i)}.</strong> ${escapeHtml(o)}</span></button>`).join("");document.querySelectorAll(".vocab-choice").forEach(b=>b.addEventListener("click",()=>answerVocabChoice(Number(b.dataset.index))));
+  }else{
+    $("vocabOptions").classList.add("hidden");$("vocabOptions").innerHTML="";$("vocabInputArea").classList.remove("hidden");setTimeout(()=>$("vocabInputAnswer").focus(),50);
+  }
+}
+
+function finishVocabAnswer({good,q,feedbackText="",acceptedAnswer="",actualMeaning=""}){
+  let masteredNow=false;
+  if(good){
+    vocabCorrect++;
+    masteredNow=recordVocabCorrect(q.word,q.meaning_ja);
+  }else{
+    vocabMistakes.push(q);
+    addWeakWord(q.word,q.meaning_ja);
+  }
+
+  const box=$("vocabFeedback");
+  box.className=`feedback-box ${good?"good":"bad"}`;
+  box.innerHTML=`<strong>${good?"✓ Correct!":"✕ Incorrect"}</strong><p><b>${escapeHtml(q.word||"")}</b>${q.meaning_ja?` — ${escapeHtml(q.meaning_ja)}`:""}</p>${q.context?`<div class="vocab-example"><strong>例文</strong><p>${escapeHtml(q.context)}</p></div>`:""}${feedbackText?`<p>${escapeHtml(feedbackText)}</p>`:""}${!good&&actualMeaning?`<p><strong>あなたの回答「${escapeHtml(actualMeaning.answer||"")}」の意味:</strong> ${escapeHtml(actualMeaning.meaning||"")}</p>`:""}${acceptedAnswer?`<p><strong>模範回答:</strong> ${escapeHtml(acceptedAnswer)}</p>`:""}${masteredNow?`<p><strong>✓ 苦手卒業:</strong> 3回連続で正解したため、今後この単語は出題しません。</p>`:""}`;
+  box.classList.remove("hidden");
+  $("vocabNextBtn").classList.remove("hidden");
+  setTimeout(()=>$("vocabNextBtn").scrollIntoView({behavior:"smooth",block:"end"}),100);
+}
+
+async function answerVocabChoice(selected){
+  if(vocabAnswered)return;
+  vocabAnswered=true;
+  const q=vocabSet[vocabIndex],correct=Number(q.answer_index),good=selected===correct;
+  const buttons=document.querySelectorAll(".vocab-choice");
+  buttons.forEach((b,i)=>{
+    b.disabled=true;
+    if(i===correct)b.classList.add("correct-choice");
+    if(i===selected&&!good)b.classList.add("wrong-choice");
+  });
+
+  if(good){
+    finishVocabAnswer({good:true,q,feedbackText:q.explanation_ja||""});
+    return;
+  }
+
+  const selectedAnswer=String(q.options?.[selected]||"").trim();
+  try{
+    const result=await postJson("/api/vocabulary-check",{
+      mode:$("vocabMode").value,
+      prompt:q.prompt,
+      context:q.context||"",
+      word:q.word,
+      meaning_ja:q.meaning_ja,
+      userAnswer:selectedAnswer,
+      explain_wrong_meaning_only:true
+    });
+    finishVocabAnswer({
+      good:false,
+      q,
+      feedbackText:q.explanation_ja||result.feedback_ja||"",
+      acceptedAnswer:$("vocabMode").value==="en-ja"?(q.meaning_ja||""):(q.word||""),
+      actualMeaning:result.actual_meaning ? {answer:selectedAnswer,meaning:result.actual_meaning} : ""
     });
   }catch(e){
     console.error(e);
-    res.status(500).json({error:e.message || "翻訳の判定に失敗しました。"});
+    finishVocabAnswer({
+      good:false,
+      q,
+      feedbackText:q.explanation_ja||"",
+      acceptedAnswer:$("vocabMode").value==="en-ja"?(q.meaning_ja||""):(q.word||"")
+    });
+  }
+}
+
+async function answerVocabInput(){
+  if(vocabAnswered)return;const q=vocabSet[vocabIndex],userAnswer=$("vocabInputAnswer").value.trim();if(!userAnswer)return;const btn=$("vocabInputSubmitBtn");
+  try{btn.disabled=true;$("vocabGiveUpBtn").disabled=true;$("vocabInputAnswer").disabled=true;const result=await postJson("/api/vocabulary-check",{mode:$("vocabMode").value,prompt:q.prompt,context:q.context||"",word:q.word,meaning_ja:q.meaning_ja,userAnswer});vocabAnswered=true;finishVocabAnswer({
+    good:Boolean(result.correct),
+    q,
+    feedbackText:result.feedback_ja||q.explanation_ja||"",
+    acceptedAnswer:result.accepted_answer||"",
+    actualMeaning:result.actual_meaning ? {answer:userAnswer,meaning:result.actual_meaning} : ""
+  });}
+  catch(e){btn.disabled=false;$("vocabGiveUpBtn").disabled=false;$("vocabInputAnswer").disabled=false;const box=$("vocabFeedback");box.className="feedback-box bad";box.innerHTML=`<strong>判定エラー</strong><p>${escapeHtml(e.message)}</p>`;box.classList.remove("hidden");}
+}
+
+function giveUpVocabInput(){
+  if(vocabAnswered)return;
+
+  const q=vocabSet[vocabIndex];
+  vocabAnswered=true;
+
+  $("vocabInputAnswer").disabled=true;
+  $("vocabInputSubmitBtn").disabled=true;
+  $("vocabGiveUpBtn").disabled=true;
+
+  finishVocabAnswer({
+    good:false,
+    q,
+    feedbackText:q.explanation_ja||"答えを確認して、次回もう一度思い出してみましょう。",
+    acceptedAnswer:$("vocabMode").value==="en-ja"?(q.meaning_ja||""):(q.word||"")
+  });
+}
+
+$("vocabGiveUpBtn").addEventListener("click",giveUpVocabInput);
+
+$("vocabInputSubmitBtn").addEventListener("click",answerVocabInput);$("vocabInputAnswer").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();answerVocabInput();}});
+$("vocabNextBtn").addEventListener("click",()=>{vocabIndex++;if(vocabIndex<vocabSet.length){renderVocabQuestion();setTimeout(()=>$("vocabQuiz").scrollIntoView({behavior:"smooth",block:"start"}),50);}else{finishVocab();setTimeout(()=>$("vocabSummary").scrollIntoView({behavior:"smooth",block:"start"}),50);}});
+
+function finishVocab(){
+  $("vocabQuiz").classList.add("hidden");$("vocabSummary").classList.remove("hidden");$("vocabFinalScore").textContent=`${vocabCorrect}/${vocabSet.length}`;$("vocabSummaryMsg").textContent=vocabCorrect===vocabSet.length?"Perfect!":vocabCorrect/vocabSet.length>=.8?"Great job!":"間違えた単語をもう一度確認しましょう。";$("vocabReview").innerHTML=vocabMistakes.length?`<h3>Review</h3>${vocabMistakes.map(q=>`<div class="review-card"><strong>${escapeHtml(q.word)}</strong> — ${escapeHtml(q.meaning_ja||"")}<p>${escapeHtml(q.explanation_ja||"")}</p></div>`).join("")}`:`<div class="review-card review-correct">全問正解です！</div>`;progress.vocabulary+=vocabSet.length;progress.correct+=vocabCorrect;progress.total+=vocabSet.length;saveProgress();
+}
+
+
+/* Writing: Japanese <-> English */
+function syncWritingModeUI(){
+  const mode = $("writingMode").value;
+  const jaToEn = mode === "ja-en";
+  const title = $("writingStartTitle");
+  const description = $("writingStartDescription");
+  if(title) title.textContent = jaToEn ? "Japanese → English" : "English → Japanese";
+  if(description) description.textContent = jaToEn
+    ? "日本語の短文を、自然な英語に訳す練習です。"
+    : "英文の短文を、自然な日本語に訳す練習です。";
+  $("writingInstruction").textContent = jaToEn
+    ? "次の日本語を英訳してください"
+    : "次の英文を日本語訳してください";
+  $("writingAnswerLabel").textContent = jaToEn ? "あなたの英訳" : "あなたの日本語訳";
+  $("writingAnswer").placeholder = jaToEn ? "英文を入力" : "日本語訳を入力";
+}
+$("writingMode").addEventListener("change", syncWritingModeUI);
+syncWritingModeUI();
+$("newWritingBtn").addEventListener("click", generateWriting);
+$("writingAgainBtn").addEventListener("click", generateWriting);
+
+async function generateWriting(){
+  const btn = $("newWritingBtn");
+  try{
+    btn.disabled = true;
+    $("writingStart").classList.remove("hidden");
+    $("writingStart").innerHTML = `<div class="empty-icon">⏳</div><h2>翻訳問題を作成しています…</h2>`;
+    $("writingQuiz").classList.add("hidden");
+    $("writingSummary").classList.add("hidden");
+
+    const count = Number($("writingCount").value) || 5;
+    const mode = $("writingMode").value;
+    const data = await postJson("/api/writing", {...commonSettings(), count, mode});
+    writingSet = Array.isArray(data.questions) ? data.questions : [];
+    if(!writingSet.length) throw new Error("翻訳問題を生成できませんでした。");
+
+    writingIndex = 0;
+    writingCorrect = 0;
+    writingMistakes = [];
+    $("writingStart").innerHTML = `
+      <div class="empty-icon">✍️</div>
+      <h2 id="writingStartTitle"></h2>
+      <p id="writingStartDescription"></p>`;
+    syncWritingModeUI();
+    $("writingStart").classList.add("hidden");
+    $("writingQuiz").classList.remove("hidden");
+    renderWritingQuestion();
+    $("writingQuiz").scrollIntoView({behavior:"smooth", block:"start"});
+  }catch(e){
+    $("writingStart").classList.remove("hidden");
+    $("writingStart").innerHTML = `<div class="empty-icon">⚠️</div><h2>エラー</h2><p class="error">${escapeHtml(e.message)}</p>`;
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+function renderWritingQuestion(){
+  const q = writingSet[writingIndex];
+  const total = writingSet.length;
+  writingAnswered = false;
+  $("writingProgress").textContent = `${writingIndex + 1} / ${total}`;
+  $("writingRunningScore").textContent = `Score ${writingCorrect}`;
+  $("writingBar").style.width = `${writingIndex / total * 100}%`;
+  const mode = $("writingMode").value;
+  $("writingPrompt").textContent = q.source_text || (mode === "ja-en" ? q.japanese : q.english) || "";
+  syncWritingModeUI();
+  $("writingAnswer").value = "";
+  $("writingAnswer").disabled = false;
+  $("writingSubmitBtn").disabled = false;
+  $("writingGiveUpBtn").disabled = false;
+  $("writingFeedback").classList.add("hidden");
+  $("writingNextBtn").classList.add("hidden");
+  setTimeout(() => $("writingAnswer").focus(), 50);
+}
+
+function finishWritingAnswer({good, result=null, gaveUp=false}){
+  const q = writingSet[writingIndex];
+  writingAnswered = true;
+
+  if(good) writingCorrect++;
+  else writingMistakes.push({q, result, gaveUp});
+
+  $("writingAnswer").disabled = true;
+  $("writingSubmitBtn").disabled = true;
+  $("writingGiveUpBtn").disabled = true;
+
+  const box = $("writingFeedback");
+  box.className = `feedback-box ${good ? "good" : "bad"}`;
+
+  const reference = result?.reference_answer || q.reference_answer || "";
+  const feedback = result?.feedback_ja || (gaveUp ? "模範解答を確認して、意味と表現を復習しましょう。" : "");
+  const natural = result?.natural_answer || "";
+  const points = Array.isArray(result?.points) ? result.points : [];
+  const mode = $("writingMode").value;
+  const referenceLabel = mode === "ja-en" ? "模範英訳" : "模範日本語訳";
+  const naturalLabel = mode === "ja-en" ? "より自然な英文" : "より自然な日本語";
+
+  box.innerHTML = `
+    <strong>${good ? "✓ Correct!" : gaveUp ? "答えを確認" : "△ 要修正"}</strong>
+    ${reference ? `<p><strong>${referenceLabel}:</strong> ${escapeHtml(reference)}</p>` : ""}
+    ${natural && natural !== reference ? `<p><strong>${naturalLabel}:</strong> ${escapeHtml(natural)}</p>` : ""}
+    ${feedback ? `<p>${escapeHtml(feedback)}</p>` : ""}
+    ${points.length ? `<ul>${points.map(x=>`<li>${escapeHtml(x)}</li>`).join("")}</ul>` : ""}
+  `;
+  box.classList.remove("hidden");
+  $("writingNextBtn").classList.remove("hidden");
+  setTimeout(() => $("writingNextBtn").scrollIntoView({behavior:"smooth", block:"end"}), 100);
+}
+
+async function submitWriting(){
+  if(writingAnswered) return;
+  const answer = $("writingAnswer").value.trim();
+  if(!answer) return;
+
+  const q = writingSet[writingIndex];
+  try{
+    $("writingSubmitBtn").disabled = true;
+    $("writingGiveUpBtn").disabled = true;
+    $("writingAnswer").disabled = true;
+
+    const result = await postJson("/api/writing-check", {
+      level: $("level").value,
+      mode: $("writingMode").value,
+      source_text: q.source_text || q.japanese || q.english || "",
+      reference_answer: q.reference_answer || "",
+      user_answer: answer
+    });
+
+    finishWritingAnswer({good:Boolean(result.correct), result});
+  }catch(e){
+    $("writingSubmitBtn").disabled = false;
+    $("writingGiveUpBtn").disabled = false;
+    $("writingAnswer").disabled = false;
+    const box = $("writingFeedback");
+    box.className = "feedback-box bad";
+    box.innerHTML = `<strong>判定エラー</strong><p>${escapeHtml(e.message)}</p>`;
+    box.classList.remove("hidden");
+  }
+}
+
+$("writingSubmitBtn").addEventListener("click", submitWriting);
+$("writingAnswer").addEventListener("keydown", e=>{
+  if(e.isComposing || e.key !== "Enter") return;
+
+  // Shift+Enter はグローバルショートカットの「分かりません」に任せる
+  if(e.shiftKey) return;
+
+  // Writingでは Enter 単独で回答送信。改行は入れない。
+  e.preventDefault();
+  submitWriting();
+});
+
+$("writingGiveUpBtn").addEventListener("click", ()=>{
+  if(writingAnswered) return;
+  const q = writingSet[writingIndex];
+  finishWritingAnswer({
+    good:false,
+    gaveUp:true,
+    result:{
+      reference_answer:q.reference_answer || "",
+      feedback_ja:q.explanation_ja || "模範解答を確認しましょう。",
+      points:q.key_points || []
+    }
+  });
+});
+
+$("writingNextBtn").addEventListener("click", ()=>{
+  writingIndex++;
+  if(writingIndex < writingSet.length){
+    renderWritingQuestion();
+    setTimeout(()=>$("writingQuiz").scrollIntoView({behavior:"smooth",block:"start"}),50);
+  }else{
+    finishWriting();
   }
 });
 
-app.post("/api/reading",requireKey,async(req,res)=>{try{const level=String(req.body.level||"B1"),topic=String(req.body.topic||"Daily conversation"),length=String(req.body.length||"medium"),count=Math.max(3,Math.min(5,Number(req.body.count)||4)),words=length==="short"?"90-130":length==="medium"?"160-230":"280-380";const p=`Create ONE English reading comprehension exercise for a Japanese learner. CEFR ${level}. Topic ${topic}. Passage about ${words} words. Return ONLY JSON {"passage":"...","translation":"...","questions":[{"question":"...","options":["A","B","C","D"],"answer_index":0,"explanation_ja":"..."}],"key_vocabulary":[{"word":"...","meaning_ja":"..."}]}. Exactly ${count} questions, 4 English options each, mix main idea/detail/vocabulary/inference, 4-8 key vocabulary, no markdown.`;const d=await generateJson(p);validateQuestions(d.questions,count);res.json(d);}catch(e){console.error(e);res.status(500).json({error:e.message||"リーディング問題の作成に失敗しました。"});}});
+function finishWriting(){
+  $("writingQuiz").classList.add("hidden");
+  $("writingSummary").classList.remove("hidden");
+  $("writingFinalScore").textContent = `${writingCorrect}/${writingSet.length}`;
+  $("writingSummaryMsg").textContent =
+    writingCorrect === writingSet.length ? "Perfect!" :
+    writingCorrect / writingSet.length >= 0.8 ? "Great job!" :
+    "模範解答を見ながら、語順と表現を復習しましょう。";
 
-app.post("/api/speech",requireKey,async(req,res)=>{try{const text=String(req.body.text||"").trim();if(!text)return res.status(400).json({error:"読み上げる英文がありません。"});const r=await fetch("https://api.openai.com/v1/audio/speech",{method:"POST",headers:{Authorization:`Bearer ${OPENAI_API_KEY}`,"Content-Type":"application/json"},body:JSON.stringify({model:"gpt-4o-mini-tts",voice:"alloy",input:text,response_format:"mp3"})});if(!r.ok)return res.status(r.status).json({error:(await r.text())||"音声生成に失敗しました。"});res.set("Content-Type","audio/mpeg");res.send(Buffer.from(await r.arrayBuffer()));}catch(e){console.error(e);res.status(500).json({error:e.message||"音声生成に失敗しました。"});}});
+  $("writingReview").innerHTML = writingMistakes.length
+    ? `<h3>Review</h3>${writingMistakes.map(({q,result})=>`
+        <div class="review-card">
+          <strong>${escapeHtml(q.source_text || q.japanese || q.english || "")}</strong>
+          <p><strong>模範解答:</strong> ${escapeHtml(result?.reference_answer || q.reference_answer || "")}</p>
+          ${result?.feedback_ja ? `<p>${escapeHtml(result.feedback_ja)}</p>` : ""}
+        </div>`).join("")}`
+    : `<div class="review-card review-correct">全問正解です！</div>`;
 
-app.post("/api/listening-translation-check",requireKey,async(req,res)=>{try{
-  const sentence=String(req.body.sentence||"").trim();
-  const referenceTranslation=String(req.body.referenceTranslation||"").trim();
-  const answer=String(req.body.answer||"").trim();
-  if(!sentence||!answer) return res.status(400).json({error:"英文と回答が必要です。"});
-  const prompt=`You are grading a Japanese learner's translation of an English listening sentence.
-Judge SEMANTIC UNDERSTANDING, not literal wording.
-English: ${sentence}
-Reference Japanese translation: ${referenceTranslation}
-Learner's Japanese answer: ${answer}
+  progress.writing = (progress.writing || 0) + writingSet.length;
+  progress.correct += writingCorrect;
+  progress.total += writingSet.length;
+  saveProgress();
+  $("writingSummary").scrollIntoView({behavior:"smooth", block:"start"});
+}
 
-Rules:
-- Accept natural paraphrases and different Japanese wording if the core meaning is preserved.
-- Do NOT require word-for-word correspondence with the reference translation.
-- Minor omissions that do not change the essential message may still be correct.
-- Mark incorrect when there is a meaningful misunderstanding, reversal, missing key fact, wrong subject/object, tense/time, quantity, condition, negation, or communicative intent.
-Return ONLY JSON:
-{"correct":true,"summary":"short Japanese result","feedback":"Japanese feedback in 2-4 concise sentences","focus":["short Japanese point 1","short Japanese point 2"]}
-No markdown.`;
-  const data=await generateJson(prompt);
-  res.json({
-    correct:!!data.correct,
-    summary:String(data.summary||""),
-    feedback:String(data.feedback||""),
-    focus:Array.isArray(data.focus)?data.focus.slice(0,3).map(x=>String(x)):[]
-  });
-}catch(e){console.error(e);res.status(500).json({error:e.message||"日本語訳の判定に失敗しました。"});}});
 
-app.post("/api/explain",requireKey,async(req,res)=>{try{const sentence=String(req.body.sentence||""),answer=String(req.body.answer||"");const p=`You are an English listening coach for a Japanese learner. Correct English: ${sentence}. Learner's dictation: ${answer}. Return ONLY JSON {"feedback":"Japanese feedback in 3-5 concise sentences","focus":["short Japanese focus point 1","short Japanese focus point 2"]}. Explain what was correct/missed, likely listening causes such as linking/weak forms/reductions/rhythm, and one practice tip. No markdown.`;res.json(await generateJson(p));}catch(e){console.error(e);res.status(500).json({error:e.message||"解説生成に失敗しました。"});}});
+/* Reading */
+$("newReadingBtn").addEventListener("click",generateReading);$("nextReadingBtn").addEventListener("click",generateReading);
+async function generateReading(){
+  const btn=$("newReadingBtn");try{btn.disabled=true;$("readingStart").classList.remove("hidden");$("readingStart").innerHTML=`<div class="empty-icon">⏳</div><h2>文章を作成しています…</h2>`;$("readingQuiz").classList.add("hidden");$("readingResult").classList.add("hidden");reading=await postJson("/api/reading",{...commonSettings(),length:$("readingLength").value,count:Number($("readingCount").value)});$("readingPassage").textContent=reading.passage;$("readingQuestions").innerHTML=(reading.questions||[]).map((q,i)=>questionHtml(q,i,"rq")).join("");document.querySelectorAll('input[name^="rq"]').forEach(input=>input.addEventListener("change",()=>{$("readingCheckBtn").disabled=!(reading.questions||[]).every((_,i)=>document.querySelector(`input[name="rq${i}"]:checked`));}));$("readingCheckBtn").disabled=true;$("readingStart").classList.add("hidden");$("readingQuiz").classList.remove("hidden");$("readingQuiz").scrollIntoView({behavior:"smooth",block:"start"});}catch(e){$("readingStart").classList.remove("hidden");$("readingStart").innerHTML=`<div class="empty-icon">⚠️</div><h2>エラー</h2><p class="error">${escapeHtml(e.message)}</p>`;}finally{btn.disabled=false;}
+}
 
-app.listen(PORT,"0.0.0.0",()=>console.log(`English Trainer running on port ${PORT}`));
+$("readingCheckBtn").addEventListener("click",()=>{let correctCount=0;const qs=reading.questions||[];const review=qs.map((q,i)=>{const s=document.querySelector(`input[name="rq${i}"]:checked`);if(!s)return"";const si=Number(s.value),ai=Number(q.answer_index);if(si===ai)correctCount++;return `<div class="review-card ${si===ai?"review-correct":"review-wrong"}"><div class="question-title">Q${i+1}. ${escapeHtml(q.question)}</div><p><strong>Your answer:</strong> ${String.fromCharCode(65+si)}. ${escapeHtml(q.options[si])}</p><p><strong>Correct:</strong> ${String.fromCharCode(65+ai)}. ${escapeHtml(q.options[ai])}</p><p>${escapeHtml(q.explanation_ja||"")}</p></div>`;}).join("");$("readingScore").textContent=`${correctCount}/${qs.length}`;$("readingScoreMsg").textContent=correctCount===qs.length?"Excellent!":correctCount/qs.length>=.7?"よく読めています。":"解説と日本語訳を確認して読み直しましょう。";$("readingReview").innerHTML=review;$("readingTranslation").textContent=reading.translation;$("readingVocabulary").innerHTML=(reading.key_vocabulary||[]).map(v=>`<span class="vocab-chip">${escapeHtml(v.word)} — ${escapeHtml(v.meaning_ja)}</span>`).join("");$("readingResult").classList.remove("hidden");$("readingResult").scrollIntoView({behavior:"smooth",block:"start"});$("readingCheckBtn").disabled=true;$("readingQuestions").querySelectorAll("input").forEach(x=>x.disabled=true);addProgress("reading",correctCount,qs.length);});
+
+$("clearProgressBtn").addEventListener("click",()=>{if(confirm("今日の学習履歴と苦手単語をリセットしますか？")){progress=blankProgress();saveProgress();}});
+
+renderProgress();
+resetListeningMode();
+
+/* PC keyboard shortcuts v5
+   Shift+Enter = 分かりません
+   Enter = Writing回答送信 / 回答後の次の問題
+   window captureで最優先に処理する。
+*/
+function isVisibleShortcutTarget(el){
+  if(!el || el.disabled) return false;
+  if(el.classList.contains("hidden")) return false;
+  if(el.closest(".hidden")) return false;
+  return true;
+}
+
+function currentTabPage(){
+  return Array.from(document.querySelectorAll(".tab-page"))
+    .find(page => !page.classList.contains("hidden"));
+}
+
+window.addEventListener("keydown", e => {
+  if(e.key !== "Enter") return;
+
+  const page = currentTabPage();
+  if(!page) return;
+
+  // Shift+Enter = 分かりません
+  // IME変換中でも Shift+Enter は明示的なショートカットとして扱う。
+  if(e.shiftKey){
+    const giveUp =
+      page.querySelector("#writingGiveUpBtn") ||
+      page.querySelector("#vocabGiveUpBtn");
+
+    if(isVisibleShortcutTarget(giveUp)){
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      giveUp.click();
+    }
+    return;
+  }
+
+  // IMEの候補確定Enterは回答送信にしない
+  if(e.isComposing || e.keyCode === 229) return;
+
+  // 回答後なら、フォーカス位置に関係なく Enter = 次の問題
+  // セット終了後は Enter = もう一度
+  const advanceCandidates = [
+    "#writingNextBtn",
+    "#vocabNextBtn",
+    "#nextListeningBtn",
+    "#nextReadingBtn",
+    "#writingAgainBtn",
+    "#vocabAgainBtn",
+    "#listeningAgainBtn",
+    "#readingAgainBtn"
+  ];
+  const advance = advanceCandidates
+    .map(sel => page.querySelector(sel))
+    .find(isVisibleShortcutTarget);
+
+  if(advance){
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    advance.click();
+    return;
+  }
+
+  // Writingの回答欄にいる場合、Enter = 回答送信（改行なし）
+  const writingAnswer = page.querySelector("#writingAnswer");
+  const writingSubmit = page.querySelector("#writingSubmitBtn");
+  if(
+    writingAnswer &&
+    document.activeElement === writingAnswer &&
+    isVisibleShortcutTarget(writingSubmit)
+  ){
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    writingSubmit.click();
+  }
+}, true);
+
