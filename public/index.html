@@ -68,7 +68,12 @@
         <div id="vocabQuiz" class="card hidden">
           <div class="progress-head"><span id="vocabProgress">1 / 10</span><span id="vocabRunningScore">Score 0</span></div>
           <div class="bar"><div id="vocabBar"></div></div>
-          <h2 id="vocabPrompt"></h2><p id="vocabContext" class="muted"></p>
+          <div class="vocab-prompt-row">
+            <h2 id="vocabPrompt"></h2>
+            <button id="vocabPronounceBtn" type="button" class="hidden" title="発音を再生">🔊 発音を聞く</button>
+          </div>
+          <audio id="vocabAudio" preload="none"></audio>
+          <p id="vocabContext" class="muted"></p>
           <div id="vocabOptions"></div>
           <div id="vocabInputArea" class="hidden"><input id="vocabInputAnswer" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="回答を入力"><div class="vocab-input-actions"><button id="vocabInputSubmitBtn" class="primary">回答する</button><button id="vocabGiveUpBtn" type="button">分かりません <small>Shift+Enter</small></button></div></div>
           <div id="vocabFeedback" class="feedback-box hidden"></div><button id="vocabNextBtn" class="hidden">次の問題 <small>Enter</small></button>
@@ -131,6 +136,6 @@
       </section>
     </main>
   </div>
-  <script src="/app.js?v=20260907-shortcuts-v5"></script>
+  <script src="/app.js?v=20260907-vocab-pronunciation-v7"></script>
 </body>
 </html>
