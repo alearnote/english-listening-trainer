@@ -70,8 +70,8 @@
           <div class="bar"><div id="vocabBar"></div></div>
           <h2 id="vocabPrompt"></h2><p id="vocabContext" class="muted"></p>
           <div id="vocabOptions"></div>
-          <div id="vocabInputArea" class="hidden"><input id="vocabInputAnswer" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="回答を入力"><div class="vocab-input-actions"><button id="vocabInputSubmitBtn" class="primary">回答する</button><button id="vocabGiveUpBtn" type="button">分かりません</button></div></div>
-          <div id="vocabFeedback" class="feedback-box hidden"></div><button id="vocabNextBtn" class="hidden">次の問題</button>
+          <div id="vocabInputArea" class="hidden"><input id="vocabInputAnswer" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="回答を入力"><div class="vocab-input-actions"><button id="vocabInputSubmitBtn" class="primary">回答する</button><button id="vocabGiveUpBtn" type="button">分かりません <small>Shift+Enter</small></button></div></div>
+          <div id="vocabFeedback" class="feedback-box hidden"></div><button id="vocabNextBtn" class="hidden">次の問題 <small>Enter</small></button>
         </div>
 
         <div id="vocabSummary" class="card hidden"><div class="score-box"><div id="vocabFinalScore" class="score">—</div><div id="vocabSummaryMsg"></div></div><div id="vocabReview"></div><button id="vocabAgainBtn">もう一度</button></div>
@@ -100,11 +100,11 @@
           <h2 id="writingPrompt" class="writing-prompt"></h2>
           <label class="stack"><span id="writingAnswerLabel">あなたの英訳</span><textarea id="writingAnswer" rows="3" placeholder="英文を入力"></textarea></label>
           <div class="vocab-input-actions">
-            <button id="writingSubmitBtn" class="primary">回答する</button>
-            <button id="writingGiveUpBtn" type="button">分かりません</button>
+            <button id="writingSubmitBtn" class="primary">回答する <small>Enter</small></button>
+            <button id="writingGiveUpBtn" type="button">分かりません <small>Shift+Enter</small></button>
           </div>
           <div id="writingFeedback" class="feedback-box hidden"></div>
-          <button id="writingNextBtn" class="hidden">次の問題</button>
+          <button id="writingNextBtn" class="hidden">次の問題 <small>Enter</small></button>
         </div>
 
         <div id="writingSummary" class="card hidden">
@@ -131,6 +131,6 @@
       </section>
     </main>
   </div>
-  <script src="/app.js"></script>
+  <script src="/app.js?v=20260907-shortcuts-v5"></script>
 </body>
 </html>
