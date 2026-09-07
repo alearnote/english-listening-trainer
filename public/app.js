@@ -759,21 +759,26 @@ window.addEventListener("keydown", e => {
   if(e.isComposing || e.keyCode === 229) return;
 
   // 回答後なら、フォーカス位置に関係なく Enter = 次の問題
-  const nextCandidates = [
+  // セット終了後は Enter = もう一度
+  const advanceCandidates = [
     "#writingNextBtn",
     "#vocabNextBtn",
     "#nextListeningBtn",
-    "#nextReadingBtn"
+    "#nextReadingBtn",
+    "#writingAgainBtn",
+    "#vocabAgainBtn",
+    "#listeningAgainBtn",
+    "#readingAgainBtn"
   ];
-  const next = nextCandidates
+  const advance = advanceCandidates
     .map(sel => page.querySelector(sel))
     .find(isVisibleShortcutTarget);
 
-  if(next){
+  if(advance){
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation();
-    next.click();
+    advance.click();
     return;
   }
 
