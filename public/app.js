@@ -493,7 +493,7 @@ function giveUpVocabInput(){
 
 $("vocabGiveUpBtn").addEventListener("click",giveUpVocabInput);
 
-$("vocabInputSubmitBtn").addEventListener("click",answerVocabInput);$("vocabInputAnswer").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();answerVocabInput();}});
+$("vocabInputSubmitBtn").addEventListener("click",answerVocabInput);$("vocabInputAnswer").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();answerVocabInput();}});
 $("vocabNextBtn").addEventListener("click",()=>{vocabIndex++;if(vocabIndex<vocabSet.length){renderVocabQuestion();setTimeout(()=>$("vocabQuiz").scrollIntoView({behavior:"smooth",block:"start"}),50);}else{finishVocab();setTimeout(()=>$("vocabSummary").scrollIntoView({behavior:"smooth",block:"start"}),50);}});
 
 function finishVocab(){
@@ -643,10 +643,14 @@ async function submitWriting(){
 
 $("writingSubmitBtn").addEventListener("click", submitWriting);
 $("writingAnswer").addEventListener("keydown", e=>{
-  if((e.ctrlKey || e.metaKey) && e.key === "Enter"){
-    e.preventDefault();
-    submitWriting();
-  }
+  if(e.isComposing || e.key !== "Enter") return;
+
+  // Shift+Enter はグローバルショートカットの「分かりません」に任せる
+  if(e.shiftKey) return;
+
+  // Writingでは Enter 単独で回答送信。改行は入れない。
+  e.preventDefault();
+  submitWriting();
 });
 
 $("writingGiveUpBtn").addEventListener("click", ()=>{
@@ -711,3 +715,80 @@ $("clearProgressBtn").addEventListener("click",()=>{if(confirm("今日の学習�
 
 renderProgress();
 resetListeningMode();
+
+/* PC keyboard shortcuts v5
+   Shift+Enter = 分かりません
+   Enter = Writing回答送信 / 回答後の次の問題
+   window captureで最優先に処理する。
+*/
+function isVisibleShortcutTarget(el){
+  if(!el || el.disabled) return false;
+  if(el.classList.contains("hidden")) return false;
+  if(el.closest(".hidden")) return false;
+  return true;
+}
+
+function currentTabPage(){
+  return Array.from(document.querySelectorAll(".tab-page"))
+    .find(page => !page.classList.contains("hidden"));
+}
+
+window.addEventListener("keydown", e => {
+  if(e.key !== "Enter") return;
+
+  const page = currentTabPage();
+  if(!page) return;
+
+  // Shift+Enter = 分かりません
+  // IME変換中でも Shift+Enter は明示的なショートカットとして扱う。
+  if(e.shiftKey){
+    const giveUp =
+      page.querySelector("#writingGiveUpBtn") ||
+      page.querySelector("#vocabGiveUpBtn");
+
+    if(isVisibleShortcutTarget(giveUp)){
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      giveUp.click();
+    }
+    return;
+  }
+
+  // IMEの候補確定Enterは回答送信にしない
+  if(e.isComposing || e.keyCode === 229) return;
+
+  // 回答後なら、フォーカス位置に関係なく Enter = 次の問題
+  const nextCandidates = [
+    "#writingNextBtn",
+    "#vocabNextBtn",
+    "#nextListeningBtn",
+    "#nextReadingBtn"
+  ];
+  const next = nextCandidates
+    .map(sel => page.querySelector(sel))
+    .find(isVisibleShortcutTarget);
+
+  if(next){
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    next.click();
+    return;
+  }
+
+  // Writingの回答欄にいる場合、Enter = 回答送信（改行なし）
+  const writingAnswer = page.querySelector("#writingAnswer");
+  const writingSubmit = page.querySelector("#writingSubmitBtn");
+  if(
+    writingAnswer &&
+    document.activeElement === writingAnswer &&
+    isVisibleShortcutTarget(writingSubmit)
+  ){
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    writingSubmit.click();
+  }
+}, true);
+
