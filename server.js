@@ -5109,8 +5109,22 @@ IMPORTANT:
 `:`The learner filled an English sentence blank. For blank mode only, use the sentence context. Accept an alternative only if it fits this exact sentence naturally, grammatically and semantically.`;
 
   const gradingContext=(mode==="blank")?(context||"(none)"):"(IGNORE CONTEXT FOR THIS MODE)";
-  const p=`Grade one vocabulary answer. Mode: ${mode}. Prompt: ${prompt}. Context: ${gradingContext}. Target English: ${word}. Target Japanese meaning: ${meaningJa}. Learner answer: ${userAnswer}. ${rule} Be fair but not over-generous. For en-ja, a valid dictionary meaning must be marked correct even if it differs from the meaning suggested by the later example sentence. For ja-en, judge only the displayed Japanese meaning. Only blank mode is context-sensitive. Return ONLY JSON {"correct":true,"score":100,"feedback_ja":"short Japanese feedback","accepted_answer":"best standard answer"}. score integer 0-100; >=80 means correct, <80 incorrect; no markdown.`;
-  const d=await generateJson(p);const score=Math.max(0,Math.min(100,Math.round(Number(d.score)||0)));res.json({correct:score>=80,score,feedback_ja:String(d.feedback_ja||""),accepted_answer:String(d.accepted_answer||(mode==="en-ja"?meaningJa:word))});
+  const p=`Grade one vocabulary answer. Mode: ${mode}. Prompt: ${prompt}. Context: ${gradingContext}. Target English: ${word}. Target Japanese meaning: ${meaningJa}. Learner answer: ${userAnswer}. ${rule} Be fair but not over-generous. For en-ja, a valid dictionary meaning must be marked correct even if it differs from the meaning suggested by the later example sentence. For ja-en, judge only the displayed Japanese meaning. Only blank mode is context-sensitive.
+
+When the learner answer is incorrect, also explain what the learner's answer itself normally means:
+- en-ja: the learner answered in Japanese. actual_meaning should state in English what that Japanese answer means.
+- ja-en: the learner answered in English. actual_meaning should state in Japanese what that English word/phrase means.
+- blank: actual_meaning should state in Japanese what the learner's English answer means.
+If correct, actual_meaning must be an empty string.
+
+Return ONLY JSON {"correct":true,"score":100,"feedback_ja":"short Japanese feedback","accepted_answer":"best standard answer","actual_meaning":"meaning of the learner answer in the opposite language, or empty string if correct"}. score integer 0-100; >=80 means correct, <80 incorrect; no markdown.`;
+  const d=await generateJson(p);const score=Math.max(0,Math.min(100,Math.round(Number(d.score)||0)));res.json({
+    correct:score>=80,
+    score,
+    feedback_ja:String(d.feedback_ja||""),
+    accepted_answer:String(d.accepted_answer||(mode==="en-ja"?meaningJa:word)),
+    actual_meaning:score>=80 ? "" : String(d.actual_meaning||"")
+  });
 }catch(e){console.error(e);res.status(500).json({error:e.message||"回答判定に失敗しました。"});}});
 
 
