@@ -424,6 +424,60 @@ $("listeningMcqCheckBtn").addEventListener("click",()=>{
 $("nextListeningBtn").addEventListener("click",()=>$("newListeningBtn").click());
 
 /* Vocabulary */
+const vocabAudioCache = new Map();
+
+function syncVocabPronunciationButton(){
+  const btn = $("vocabPronounceBtn");
+  if(!btn) return;
+  const q = vocabSet?.[vocabIndex];
+  const show = $("vocabMode").value === "en-ja" && q && q.word;
+  btn.classList.toggle("hidden", !show);
+  btn.disabled = !show;
+}
+
+async function playVocabPronunciation(){
+  const q = vocabSet?.[vocabIndex];
+  if(!q || $("vocabMode").value !== "en-ja" || !q.word) return;
+
+  const btn = $("vocabPronounceBtn");
+  const audio = $("vocabAudio");
+  const text = String(q.word).trim();
+  if(!text) return;
+
+  try{
+    btn.disabled = true;
+    btn.textContent = "🔊 準備中…";
+
+    let url = vocabAudioCache.get(text.toLowerCase());
+    if(!url){
+      const r = await fetch("/api/speech", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({text})
+      });
+      if(!r.ok){
+        let msg = "音声生成に失敗しました。";
+        try{ msg = (await r.json()).error || msg; }catch{}
+        throw new Error(msg);
+      }
+      url = URL.createObjectURL(await r.blob());
+      vocabAudioCache.set(text.toLowerCase(), url);
+    }
+
+    audio.src = url;
+    audio.currentTime = 0;
+    await audio.play();
+  }catch(e){
+    console.error(e);
+    alert(e.message || "発音の再生に失敗しました。");
+  }finally{
+    btn.disabled = false;
+    btn.textContent = "🔊 発音を聞く";
+  }
+}
+
+$("vocabPronounceBtn").addEventListener("click", playVocabPronunciation);
+$("vocabMode").addEventListener("change", syncVocabPronunciationButton);
 $("vocabCount").addEventListener("change",()=>{$("newVocabBtn").textContent=`＋ ${$("vocabCount").value}問作る`;});
 $("newVocabBtn").addEventListener("click",generateVocab);$("vocabAgainBtn").addEventListener("click",generateVocab);
 
@@ -437,7 +491,8 @@ async function generateVocab(){
 }
 
 function renderVocabQuestion(){
-  const q=vocabSet[vocabIndex],total=vocabSet.length,answerMode=$("vocabAnswerMode").value;vocabAnswered=false;$("vocabProgress").textContent=`${vocabIndex+1} / ${total}`;$("vocabRunningScore").textContent=`Score ${vocabCorrect}`;$("vocabBar").style.width=`${vocabIndex/total*100}%`;$("vocabPrompt").textContent=q.prompt;$("vocabContext").textContent="";$("vocabContext").classList.add("hidden");$("vocabFeedback").classList.add("hidden");$("vocabNextBtn").classList.add("hidden");$("vocabInputAnswer").value="";$("vocabInputAnswer").disabled=false;$("vocabInputSubmitBtn").disabled=false;$("vocabGiveUpBtn").disabled=false;
+  const q=vocabSet[vocabIndex],total=vocabSet.length,answerMode=$("vocabAnswerMode").value;vocabAnswered=false;
+  syncVocabPronunciationButton();$("vocabProgress").textContent=`${vocabIndex+1} / ${total}`;$("vocabRunningScore").textContent=`Score ${vocabCorrect}`;$("vocabBar").style.width=`${vocabIndex/total*100}%`;$("vocabPrompt").textContent=q.prompt;$("vocabContext").textContent="";$("vocabContext").classList.add("hidden");$("vocabFeedback").classList.add("hidden");$("vocabNextBtn").classList.add("hidden");$("vocabInputAnswer").value="";$("vocabInputAnswer").disabled=false;$("vocabInputSubmitBtn").disabled=false;$("vocabGiveUpBtn").disabled=false;
   if(answerMode==="choice"){
     $("vocabOptions").classList.remove("hidden");$("vocabInputArea").classList.add("hidden");$("vocabOptions").innerHTML=q.options.map((o,i)=>`<button class="option vocab-choice" data-index="${i}"><span><strong>${String.fromCharCode(65+i)}.</strong> ${escapeHtml(o)}</span></button>`).join("");document.querySelectorAll(".vocab-choice").forEach(b=>b.addEventListener("click",()=>answerVocabChoice(Number(b.dataset.index))));
   }else{
@@ -445,7 +500,7 @@ function renderVocabQuestion(){
   }
 }
 
-function finishVocabAnswer({good,q,feedbackText="",acceptedAnswer=""}){
+function finishVocabAnswer({good,q,feedbackText="",acceptedAnswer="",actualMeaning=""}){
   let masteredNow=false;
   if(good){
     vocabCorrect++;
@@ -457,19 +512,66 @@ function finishVocabAnswer({good,q,feedbackText="",acceptedAnswer=""}){
 
   const box=$("vocabFeedback");
   box.className=`feedback-box ${good?"good":"bad"}`;
-  box.innerHTML=`<strong>${good?"✓ Correct!":"✕ Incorrect"}</strong><p><b>${escapeHtml(q.word||"")}</b>${q.meaning_ja?` — ${escapeHtml(q.meaning_ja)}`:""}</p>${q.context?`<div class="vocab-example"><strong>例文</strong><p>${escapeHtml(q.context)}</p></div>`:""}${feedbackText?`<p>${escapeHtml(feedbackText)}</p>`:""}${acceptedAnswer?`<p><strong>模範回答:</strong> ${escapeHtml(acceptedAnswer)}</p>`:""}${masteredNow?`<p><strong>✓ 苦手卒業:</strong> 3回連続で正解したため、今後この単語は出題しません。</p>`:""}`;
+  box.innerHTML=`<strong>${good?"✓ Correct!":"✕ Incorrect"}</strong><p><b>${escapeHtml(q.word||"")}</b>${q.meaning_ja?` — ${escapeHtml(q.meaning_ja)}`:""}</p>${q.context?`<div class="vocab-example"><strong>例文</strong><p>${escapeHtml(q.context)}</p></div>`:""}${feedbackText?`<p>${escapeHtml(feedbackText)}</p>`:""}${!good&&actualMeaning?`<p><strong>あなたの回答「${escapeHtml(actualMeaning.answer||"")}」の意味:</strong> ${escapeHtml(actualMeaning.meaning||"")}</p>`:""}${acceptedAnswer?`<p><strong>模範回答:</strong> ${escapeHtml(acceptedAnswer)}</p>`:""}${masteredNow?`<p><strong>✓ 苦手卒業:</strong> 3回連続で正解したため、今後この単語は出題しません。</p>`:""}`;
   box.classList.remove("hidden");
   $("vocabNextBtn").classList.remove("hidden");
   setTimeout(()=>$("vocabNextBtn").scrollIntoView({behavior:"smooth",block:"end"}),100);
 }
 
-function answerVocabChoice(selected){
-  if(vocabAnswered)return;vocabAnswered=true;const q=vocabSet[vocabIndex],correct=Number(q.answer_index),good=selected===correct;document.querySelectorAll(".vocab-choice").forEach((b,i)=>{b.disabled=true;if(i===correct)b.classList.add("correct-choice");if(i===selected&&!good)b.classList.add("wrong-choice");});finishVocabAnswer({good,q,feedbackText:q.explanation_ja||""});
+async function answerVocabChoice(selected){
+  if(vocabAnswered)return;
+  vocabAnswered=true;
+  const q=vocabSet[vocabIndex],correct=Number(q.answer_index),good=selected===correct;
+  const buttons=document.querySelectorAll(".vocab-choice");
+  buttons.forEach((b,i)=>{
+    b.disabled=true;
+    if(i===correct)b.classList.add("correct-choice");
+    if(i===selected&&!good)b.classList.add("wrong-choice");
+  });
+
+  if(good){
+    finishVocabAnswer({good:true,q,feedbackText:q.explanation_ja||""});
+    return;
+  }
+
+  const selectedAnswer=String(q.options?.[selected]||"").trim();
+  try{
+    const result=await postJson("/api/vocabulary-check",{
+      mode:$("vocabMode").value,
+      prompt:q.prompt,
+      context:q.context||"",
+      word:q.word,
+      meaning_ja:q.meaning_ja,
+      userAnswer:selectedAnswer,
+      explain_wrong_meaning_only:true
+    });
+    finishVocabAnswer({
+      good:false,
+      q,
+      feedbackText:q.explanation_ja||result.feedback_ja||"",
+      acceptedAnswer:$("vocabMode").value==="en-ja"?(q.meaning_ja||""):(q.word||""),
+      actualMeaning:result.actual_meaning ? {answer:selectedAnswer,meaning:result.actual_meaning} : ""
+    });
+  }catch(e){
+    console.error(e);
+    finishVocabAnswer({
+      good:false,
+      q,
+      feedbackText:q.explanation_ja||"",
+      acceptedAnswer:$("vocabMode").value==="en-ja"?(q.meaning_ja||""):(q.word||"")
+    });
+  }
 }
 
 async function answerVocabInput(){
   if(vocabAnswered)return;const q=vocabSet[vocabIndex],userAnswer=$("vocabInputAnswer").value.trim();if(!userAnswer)return;const btn=$("vocabInputSubmitBtn");
-  try{btn.disabled=true;$("vocabGiveUpBtn").disabled=true;$("vocabInputAnswer").disabled=true;const result=await postJson("/api/vocabulary-check",{mode:$("vocabMode").value,prompt:q.prompt,context:q.context||"",word:q.word,meaning_ja:q.meaning_ja,userAnswer});vocabAnswered=true;finishVocabAnswer({good:Boolean(result.correct),q,feedbackText:result.feedback_ja||q.explanation_ja||"",acceptedAnswer:result.accepted_answer||""});}
+  try{btn.disabled=true;$("vocabGiveUpBtn").disabled=true;$("vocabInputAnswer").disabled=true;const result=await postJson("/api/vocabulary-check",{mode:$("vocabMode").value,prompt:q.prompt,context:q.context||"",word:q.word,meaning_ja:q.meaning_ja,userAnswer});vocabAnswered=true;finishVocabAnswer({
+    good:Boolean(result.correct),
+    q,
+    feedbackText:result.feedback_ja||q.explanation_ja||"",
+    acceptedAnswer:result.accepted_answer||"",
+    actualMeaning:result.actual_meaning ? {answer:userAnswer,meaning:result.actual_meaning} : ""
+  });}
   catch(e){btn.disabled=false;$("vocabGiveUpBtn").disabled=false;$("vocabInputAnswer").disabled=false;const box=$("vocabFeedback");box.className="feedback-box bad";box.innerHTML=`<strong>判定エラー</strong><p>${escapeHtml(e.message)}</p>`;box.classList.remove("hidden");}
 }
 
