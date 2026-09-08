@@ -17,6 +17,7 @@
       <button class="tab" data-tab="vocabulary">🧠 Vocabulary</button>
       <button class="tab" data-tab="writing">✍️ Writing</button>
       <button class="tab" data-tab="reading">📖 Reading</button>
+      <button class="tab" data-tab="dictionary">📘 Dictionary</button>
       <button class="tab" data-tab="progress">📊 Progress</button>
     </nav>
 
@@ -131,11 +132,56 @@
         <div id="readingResult" class="card hidden"><div class="score-box"><div id="readingScore" class="score">—</div><div id="readingScoreMsg"></div></div><div id="readingReview"></div><h3>日本語訳</h3><p id="readingTranslation"></p><h3>Key vocabulary</h3><div id="readingVocabulary"></div><button id="nextReadingBtn">次の文章</button></div>
       </section>
 
+      
+      <section id="tab-dictionary" class="tab-page hidden">
+        <div class="card">
+          <h2>📘 Dictionary</h2>
+          <p class="muted">日本語または英語を入力すると、自動判定して和英・英和で表示します。</p>
+          <label class="stack">
+            <span>検索する語・フレーズ</span>
+            <input id="dictionaryInput" type="text" autocomplete="off" placeholder="例：検討する / consider / demand on">
+          </label>
+          <div class="toolbar">
+            <button id="dictionarySearchBtn" class="primary">検索</button>
+            <button id="dictionaryPronounceBtn" type="button" class="hidden">🔊 英語を再生</button>
+          </div>
+          <audio id="dictionaryAudio" preload="none"></audio>
+          <p id="dictionaryStatus" class="status"></p>
+        </div>
+
+        <div id="dictionaryResult" class="card hidden">
+          <div class="dictionary-direction" id="dictionaryDirection"></div>
+          <h2 id="dictionaryHeadword"></h2>
+          <div class="dictionary-main-translation" id="dictionaryTranslation"></div>
+
+          <div id="dictionaryPosRow" class="dictionary-row hidden">
+            <strong>品詞</strong>
+            <span id="dictionaryPos"></span>
+          </div>
+
+          <div id="dictionaryAlternativesRow" class="dictionary-row hidden">
+            <strong>他の訳・表現</strong>
+            <div id="dictionaryAlternatives"></div>
+          </div>
+
+          <div id="dictionaryNoteRow" class="dictionary-row hidden">
+            <strong>ニュアンス・使い方</strong>
+            <p id="dictionaryNote"></p>
+          </div>
+
+          <div id="dictionaryExampleRow" class="dictionary-row hidden">
+            <strong>例文</strong>
+            <p id="dictionaryExampleEn"></p>
+            <p id="dictionaryExampleJa" class="muted"></p>
+          </div>
+        </div>
+      </section>
+
       <section id="tab-progress" class="tab-page hidden">
         <div class="card"><h2>Today's progress</h2><div class="stats"><div><strong id="statListening">0</strong><span>Listening</span></div><div><strong id="statVocabulary">0</strong><span>Vocabulary</span></div><div><strong id="statWriting">0</strong><span>Writing</span></div><div><strong id="statReading">0</strong><span>Reading</span></div><div><strong id="statAccuracy">—</strong><span>Accuracy</span></div></div><p>今日の合計: <strong id="todayTotal">0</strong></p><h3>苦手単語</h3><div id="weakWords" class="weak-list"></div><button id="clearProgressBtn" class="danger">今日の記録をリセット</button></div>
       </section>
     </main>
   </div>
-  <script src="/app.js?v=20260907-vocab-pronunciation-v7"></script>
+  <script src="/app.js?v=20260908-dictionary-v8"></script>
 </body>
 </html>
