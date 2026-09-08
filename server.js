@@ -5250,6 +5250,80 @@ No markdown.`;
 
 app.post("/api/reading",requireKey,async(req,res)=>{try{const level=String(req.body.level||"B1"),topic=String(req.body.topic||"Daily conversation"),length=String(req.body.length||"medium"),count=Math.max(3,Math.min(5,Number(req.body.count)||4)),words=length==="short"?"90-130":length==="medium"?"160-230":"280-380";const p=`Create ONE English reading comprehension exercise for a Japanese learner. CEFR ${level}. Topic ${topic}. Passage about ${words} words. Return ONLY JSON {"passage":"...","translation":"...","questions":[{"question":"...","options":["A","B","C","D"],"answer_index":0,"explanation_ja":"..."}],"key_vocabulary":[{"word":"...","meaning_ja":"..."}]}. Exactly ${count} questions, 4 English options each, mix main idea/detail/vocabulary/inference, 4-8 key vocabulary, no markdown.`;const d=await generateJson(p);validateQuestions(d.questions,count);res.json(d);}catch(e){console.error(e);res.status(500).json({error:e.message||"リーディング問題の作成に失敗しました。"});}});
 
+
+app.post("/api/dictionary",requireKey,async(req,res)=>{try{
+  const query=String(req.body.query||"").trim();
+  if(!query) return res.status(400).json({error:"検索する語・フレーズを入力してください。"});
+
+  const isJapanese=/[\u3040-\u30ff\u3400-\u9fff]/u.test(query);
+  const direction=isJapanese?"ja-en":"en-ja";
+
+  const prompt=direction==="ja-en"
+    ? `You are a practical Japanese-English dictionary for a Japanese learner.
+The user entered Japanese:
+${query}
+
+Give useful English translation(s).
+Return ONLY JSON:
+{
+  "direction":"ja-en",
+  "headword":"the original Japanese query",
+  "translation":"the best/main English translation",
+  "part_of_speech":"品詞を日本語で簡潔に。判定困難なら空文字",
+  "alternatives":["other natural English translations, up to 5"],
+  "note_ja":"短い日本語のニュアンス・使い分け説明",
+  "example_en":"one natural English example sentence using the main translation",
+  "example_ja":"その例文の自然な日本語訳",
+  "english_for_audio":"the English word/phrase that should be pronounced"
+}
+
+Rules:
+- If the Japanese query has multiple common senses, put the most generally useful translation first and list major alternatives.
+- For verbs/adjectives, prefer dictionary/base forms where appropriate.
+- Do not invent an English phrase that is unnatural.
+- no markdown.`
+    : `You are a practical English-Japanese dictionary for a Japanese learner.
+The user entered English:
+${query}
+
+Give useful Japanese translation(s).
+Return ONLY JSON:
+{
+  "direction":"en-ja",
+  "headword":"the original English query",
+  "translation":"the best/main Japanese translation",
+  "part_of_speech":"品詞を日本語で簡潔に。複数ある場合は主要なもの",
+  "alternatives":["other common Japanese meanings, up to 5"],
+  "note_ja":"短い日本語のニュアンス・使い分け説明",
+  "example_en":"one natural English example sentence using the query",
+  "example_ja":"その例文の自然な日本語訳",
+  "english_for_audio":"the original English query"
+}
+
+Rules:
+- Judge the English expression itself, not one hidden context.
+- If it has multiple common dictionary meanings, include the important ones in alternatives.
+- Explain phrasal verbs, prepositional combinations, and idioms as complete expressions.
+- If the query appears misspelled, do not silently replace it; mention likely intended spelling in note_ja and translate the likely intended word only when highly confident.
+- no markdown.`;
+
+  const d=await generateJson(prompt);
+  res.json({
+    direction:direction,
+    headword:String(d.headword||query),
+    translation:String(d.translation||""),
+    part_of_speech:String(d.part_of_speech||""),
+    alternatives:Array.isArray(d.alternatives)?d.alternatives.slice(0,5).map(x=>String(x)):[],
+    note_ja:String(d.note_ja||""),
+    example_en:String(d.example_en||""),
+    example_ja:String(d.example_ja||""),
+    english_for_audio:String(d.english_for_audio||(direction==="en-ja"?query:d.translation||""))
+  });
+}catch(e){
+  console.error(e);
+  res.status(500).json({error:e.message||"辞書検索に失敗しました。"});
+}});
+
 app.post("/api/speech",requireKey,async(req,res)=>{try{const text=String(req.body.text||"").trim();if(!text)return res.status(400).json({error:"読み上げる英文がありません。"});const r=await fetch("https://api.openai.com/v1/audio/speech",{method:"POST",headers:{Authorization:`Bearer ${OPENAI_API_KEY}`,"Content-Type":"application/json"},body:JSON.stringify({model:"gpt-4o-mini-tts",voice:"alloy",input:text,response_format:"mp3"})});if(!r.ok)return res.status(r.status).json({error:(await r.text())||"音声生成に失敗しました。"});res.set("Content-Type","audio/mpeg");res.send(Buffer.from(await r.arrayBuffer()));}catch(e){console.error(e);res.status(500).json({error:e.message||"音声生成に失敗しました。"});}});
 
 app.post("/api/listening-translation-check",requireKey,async(req,res)=>{try{
