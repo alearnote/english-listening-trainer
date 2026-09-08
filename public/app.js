@@ -818,6 +818,129 @@ $("clearProgressBtn").addEventListener("click",()=>{if(confirm("今日の学習�
 renderProgress();
 resetListeningMode();
 
+
+/* Dictionary */
+let dictionaryCurrentEnglish = "";
+let dictionaryAudioUrl = null;
+
+function hasJapaneseText(text){
+  return /[\u3040-\u30ff\u3400-\u9fff]/u.test(String(text || ""));
+}
+
+function clearDictionaryAudio(){
+  if(dictionaryAudioUrl){
+    URL.revokeObjectURL(dictionaryAudioUrl);
+    dictionaryAudioUrl = null;
+  }
+  const audio = $("dictionaryAudio");
+  audio.removeAttribute("src");
+  audio.load();
+}
+
+function setDictionaryPronunciation(text){
+  dictionaryCurrentEnglish = String(text || "").trim();
+  const btn = $("dictionaryPronounceBtn");
+  btn.classList.toggle("hidden", !dictionaryCurrentEnglish);
+  btn.disabled = !dictionaryCurrentEnglish;
+}
+
+async function playDictionaryPronunciation(){
+  if(!dictionaryCurrentEnglish) return;
+
+  const btn = $("dictionaryPronounceBtn");
+  try{
+    btn.disabled = true;
+    btn.textContent = "🔊 準備中…";
+
+    if(!dictionaryAudioUrl){
+      const r = await fetch("/api/speech",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({text:dictionaryCurrentEnglish})
+      });
+      if(!r.ok){
+        let msg="音声生成に失敗しました。";
+        try{msg=(await r.json()).error||msg;}catch{}
+        throw new Error(msg);
+      }
+      dictionaryAudioUrl = URL.createObjectURL(await r.blob());
+    }
+
+    const audio = $("dictionaryAudio");
+    audio.src = dictionaryAudioUrl;
+    audio.currentTime = 0;
+    await audio.play();
+  }catch(e){
+    $("dictionaryStatus").textContent = e.message || "発音の再生に失敗しました。";
+    $("dictionaryStatus").classList.add("error");
+  }finally{
+    btn.disabled = false;
+    btn.textContent = "🔊 英語を再生";
+  }
+}
+
+function renderDictionaryResult(data){
+  $("dictionaryResult").classList.remove("hidden");
+  $("dictionaryDirection").textContent = data.direction === "ja-en" ? "和英" : "英和";
+  $("dictionaryHeadword").textContent = data.headword || "";
+  $("dictionaryTranslation").textContent = data.translation || "";
+
+  const pos = String(data.part_of_speech || "").trim();
+  $("dictionaryPosRow").classList.toggle("hidden", !pos);
+  $("dictionaryPos").textContent = pos;
+
+  const alternatives = Array.isArray(data.alternatives) ? data.alternatives.filter(Boolean) : [];
+  $("dictionaryAlternativesRow").classList.toggle("hidden", !alternatives.length);
+  $("dictionaryAlternatives").innerHTML = alternatives.map(x=>`<span class="dictionary-alt">${escapeHtml(x)}</span>`).join("");
+
+  const note = String(data.note_ja || "").trim();
+  $("dictionaryNoteRow").classList.toggle("hidden", !note);
+  $("dictionaryNote").textContent = note;
+
+  const exampleEn = String(data.example_en || "").trim();
+  const exampleJa = String(data.example_ja || "").trim();
+  $("dictionaryExampleRow").classList.toggle("hidden", !exampleEn && !exampleJa);
+  $("dictionaryExampleEn").textContent = exampleEn;
+  $("dictionaryExampleJa").textContent = exampleJa;
+
+  clearDictionaryAudio();
+  setDictionaryPronunciation(data.english_for_audio || "");
+}
+
+async function searchDictionary(){
+  const input = $("dictionaryInput").value.trim();
+  if(!input) return;
+
+  const btn = $("dictionarySearchBtn");
+  try{
+    btn.disabled = true;
+    $("dictionaryStatus").classList.remove("error");
+    $("dictionaryStatus").textContent = "検索しています…";
+    $("dictionaryResult").classList.add("hidden");
+    setDictionaryPronunciation("");
+
+    const data = await postJson("/api/dictionary",{query:input});
+    renderDictionaryResult(data);
+    $("dictionaryStatus").textContent = "";
+  }catch(e){
+    $("dictionaryStatus").textContent = e.message || "検索に失敗しました。";
+    $("dictionaryStatus").classList.add("error");
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+$("dictionarySearchBtn").addEventListener("click", searchDictionary);
+$("dictionaryPronounceBtn").addEventListener("click", playDictionaryPronunciation);
+$("dictionaryInput").addEventListener("keydown", e=>{
+  if(e.isComposing) return;
+  if(e.key==="Enter"){
+    e.preventDefault();
+    searchDictionary();
+  }
+});
+
+
 /* PC keyboard shortcuts v5
    Shift+Enter = 分かりません
    Enter = Writing回答送信 / 回答後の次の問題
