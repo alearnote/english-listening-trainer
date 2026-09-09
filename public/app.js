@@ -22,6 +22,8 @@ const VOCAB_HISTORY_LIMIT = 1000;
 const LISTENING_HISTORY_KEY = "englishTrainerV2ListeningHistory";
 const LISTENING_HISTORY_LIMIT = 20;
 const VOCAB_MASTERY_KEY = "englishTrainerV3VocabMastery";
+const WRITING_GRAMMAR_HISTORY_KEY = "englishTrainerV9WritingGrammarHistory";
+const WRITING_GRAMMAR_HISTORY_LIMIT = 500;
 
 function escapeHtml(s) {
   return String(s ?? "")
@@ -603,6 +605,30 @@ function finishVocab(){
 }
 
 
+
+function loadWritingGrammarHistory(){
+  try{
+    const data=JSON.parse(localStorage.getItem(WRITING_GRAMMAR_HISTORY_KEY)||"[]");
+    return Array.isArray(data) ? data.filter(Boolean).slice(-WRITING_GRAMMAR_HISTORY_LIMIT) : [];
+  }catch{return [];}
+}
+
+function rememberWritingGrammar(ids){
+  const current=loadWritingGrammarHistory();
+  const result=[];
+  const seen=new Set();
+  for(const raw of [...current,...(ids||[])]){
+    const id=String(raw||"").trim();
+    if(!id || seen.has(id)) continue;
+    seen.add(id);
+    result.push(id);
+  }
+  localStorage.setItem(
+    WRITING_GRAMMAR_HISTORY_KEY,
+    JSON.stringify(result.slice(-WRITING_GRAMMAR_HISTORY_LIMIT))
+  );
+}
+
 /* Writing: Japanese <-> English */
 function syncWritingModeUI(){
   const mode = $("writingMode").value;
@@ -635,9 +661,15 @@ async function generateWriting(){
 
     const count = Number($("writingCount").value) || 5;
     const mode = $("writingMode").value;
-    const data = await postJson("/api/writing", {...commonSettings(), count, mode});
+    const data = await postJson("/api/writing", {
+      ...commonSettings(),
+      count,
+      mode,
+      recentGrammarIds: loadWritingGrammarHistory()
+    });
     writingSet = Array.isArray(data.questions) ? data.questions : [];
     if(!writingSet.length) throw new Error("翻訳問題を生成できませんでした。");
+    rememberWritingGrammar(writingSet.map(q=>q.grammar_id).filter(Boolean));
 
     writingIndex = 0;
     writingCorrect = 0;
@@ -702,6 +734,7 @@ function finishWritingAnswer({good, result=null, gaveUp=false}){
 
   box.innerHTML = `
     <strong>${good ? "✓ Correct!" : gaveUp ? "答えを確認" : "△ 要修正"}</strong>
+    ${q.grammar_name_ja ? `<p><strong>今回の文法:</strong> ${escapeHtml(q.grammar_name_ja)}${q.grammar_pattern ? ` <span class="muted">(${escapeHtml(q.grammar_pattern)})</span>` : ""}</p>` : ""}
     ${reference ? `<p><strong>${referenceLabel}:</strong> ${escapeHtml(reference)}</p>` : ""}
     ${natural && natural !== reference ? `<p><strong>${naturalLabel}:</strong> ${escapeHtml(natural)}</p>` : ""}
     ${feedback ? `<p>${escapeHtml(feedback)}</p>` : ""}
@@ -728,6 +761,8 @@ async function submitWriting(){
       mode: $("writingMode").value,
       source_text: q.source_text || q.japanese || q.english || "",
       reference_answer: q.reference_answer || "",
+      grammar_name_ja: q.grammar_name_ja || "",
+      grammar_pattern: q.grammar_pattern || "",
       user_answer: answer
     });
 
@@ -792,6 +827,7 @@ function finishWriting(){
     ? `<h3>Review</h3>${writingMistakes.map(({q,result})=>`
         <div class="review-card">
           <strong>${escapeHtml(q.source_text || q.japanese || q.english || "")}</strong>
+          ${q.grammar_name_ja ? `<p><strong>文法:</strong> ${escapeHtml(q.grammar_name_ja)}</p>` : ""}
           <p><strong>模範解答:</strong> ${escapeHtml(result?.reference_answer || q.reference_answer || "")}</p>
           ${result?.feedback_ja ? `<p>${escapeHtml(result.feedback_ja)}</p>` : ""}
         </div>`).join("")}`
