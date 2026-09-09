@@ -5128,53 +5128,3297 @@ Return ONLY JSON {"correct":true,"score":100,"feedback_ja":"short Japanese feedb
 }catch(e){console.error(e);res.status(500).json({error:e.message||"回答判定に失敗しました。"});}});
 
 
+const WRITING_GRAMMAR_POOLS = {
+  "A1": [
+    {
+      "id": "a1-g001",
+      "name_ja": "be動詞：肯定文",
+      "pattern": "be + 名詞/形容詞/場所",
+      "function_ja": "人・物の状態や属性を表す基本文",
+      "prompt_rule": "人・物の状態や属性を表す基本文ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「be + 名詞/形容詞/場所」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g002",
+      "name_ja": "be動詞：否定文",
+      "pattern": "be + 名詞/形容詞/場所",
+      "function_ja": "be not を使って状態を否定する",
+      "prompt_rule": "be not を使って状態を否定することが自然に必要になる、短く実用的な文を作る。ターゲット構文「be + 名詞/形容詞/場所」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g003",
+      "name_ja": "be動詞：Yes/No疑問文",
+      "pattern": "be + 名詞/形容詞/場所",
+      "function_ja": "be動詞を文頭に置いて質問する",
+      "prompt_rule": "be動詞を文頭に置いて質問することが自然に必要になる、短く実用的な文を作る。ターゲット構文「be + 名詞/形容詞/場所」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g004",
+      "name_ja": "be動詞：Wh疑問文",
+      "pattern": "be + 名詞/形容詞/場所",
+      "function_ja": "who/what/where + be で情報を尋ねる",
+      "prompt_rule": "who/what/where + be で情報を尋ねることが自然に必要になる、短く実用的な文を作る。ターゲット構文「be + 名詞/形容詞/場所」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g005",
+      "name_ja": "be動詞：場所表現",
+      "pattern": "be + 名詞/形容詞/場所",
+      "function_ja": "be + 前置詞句で所在を表す",
+      "prompt_rule": "be + 前置詞句で所在を表すことが自然に必要になる、短く実用的な文を作る。ターゲット構文「be + 名詞/形容詞/場所」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g006",
+      "name_ja": "一般動詞の現在形：習慣",
+      "pattern": "主語 + 動詞現在形",
+      "function_ja": "日常的な習慣を表す",
+      "prompt_rule": "日常的な習慣を表すことが自然に必要になる、短く実用的な文を作る。ターゲット構文「主語 + 動詞現在形」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g007",
+      "name_ja": "一般動詞の現在形：一般事実",
+      "pattern": "主語 + 動詞現在形",
+      "function_ja": "普遍的・一般的な事実を表す",
+      "prompt_rule": "普遍的・一般的な事実を表すことが自然に必要になる、短く実用的な文を作る。ターゲット構文「主語 + 動詞現在形」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g008",
+      "name_ja": "一般動詞の現在形：三単現",
+      "pattern": "主語 + 動詞現在形",
+      "function_ja": "he/she/it で -s/-es を使う",
+      "prompt_rule": "he/she/it で -s/-es を使うことが自然に必要になる、短く実用的な文を作る。ターゲット構文「主語 + 動詞現在形」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g009",
+      "name_ja": "一般動詞の現在形：否定文",
+      "pattern": "主語 + 動詞現在形",
+      "function_ja": "do/does not + 動詞原形で否定する",
+      "prompt_rule": "do/does not + 動詞原形で否定することが自然に必要になる、短く実用的な文を作る。ターゲット構文「主語 + 動詞現在形」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g010",
+      "name_ja": "一般動詞の現在形：疑問文",
+      "pattern": "主語 + 動詞現在形",
+      "function_ja": "Do/Does + 主語 + 動詞原形で尋ねる",
+      "prompt_rule": "Do/Does + 主語 + 動詞原形で尋ねることが自然に必要になる、短く実用的な文を作る。ターゲット構文「主語 + 動詞現在形」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g011",
+      "name_ja": "現在進行形：今していること",
+      "pattern": "be + V-ing",
+      "function_ja": "発話時点で進行中の動作",
+      "prompt_rule": "発話時点で進行中の動作ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「be + V-ing」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g012",
+      "name_ja": "現在進行形：一時的な状態",
+      "pattern": "be + V-ing",
+      "function_ja": "一時的に続いている活動",
+      "prompt_rule": "一時的に続いている活動ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「be + V-ing」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g013",
+      "name_ja": "現在進行形：否定文",
+      "pattern": "be + V-ing",
+      "function_ja": "be not + V-ing",
+      "prompt_rule": "be not + V-ingことが自然に必要になる、短く実用的な文を作る。ターゲット構文「be + V-ing」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g014",
+      "name_ja": "現在進行形：疑問文",
+      "pattern": "be + V-ing",
+      "function_ja": "be + 主語 + V-ing",
+      "prompt_rule": "be + 主語 + V-ingことが自然に必要になる、短く実用的な文を作る。ターゲット構文「be + V-ing」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g015",
+      "name_ja": "現在進行形：近い予定",
+      "pattern": "be + V-ing",
+      "function_ja": "予定済みの近い未来を表す",
+      "prompt_rule": "予定済みの近い未来を表すことが自然に必要になる、短く実用的な文を作る。ターゲット構文「be + V-ing」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g016",
+      "name_ja": "過去形：過去の出来事",
+      "pattern": "動詞の過去形",
+      "function_ja": "過去の一回の出来事",
+      "prompt_rule": "過去の一回の出来事ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「動詞の過去形」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g017",
+      "name_ja": "過去形：過去の状態",
+      "pattern": "動詞の過去形",
+      "function_ja": "was/were を使った状態",
+      "prompt_rule": "was/were を使った状態ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「動詞の過去形」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g018",
+      "name_ja": "過去形：規則変化",
+      "pattern": "動詞の過去形",
+      "function_ja": "-ed の過去形",
+      "prompt_rule": "-ed の過去形ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「動詞の過去形」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g019",
+      "name_ja": "過去形：不規則変化",
+      "pattern": "動詞の過去形",
+      "function_ja": "go-went などの不規則過去形",
+      "prompt_rule": "go-went などの不規則過去形ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「動詞の過去形」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g020",
+      "name_ja": "過去形：過去の否定・疑問",
+      "pattern": "動詞の過去形",
+      "function_ja": "did/didn't + 動詞原形",
+      "prompt_rule": "did/didn't + 動詞原形ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「動詞の過去形」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g021",
+      "name_ja": "未来表現：その場の決定",
+      "pattern": "will / be going to",
+      "function_ja": "will でその場の意思決定",
+      "prompt_rule": "will でその場の意思決定ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「will / be going to」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g022",
+      "name_ja": "未来表現：予測",
+      "pattern": "will / be going to",
+      "function_ja": "will で未来を予測",
+      "prompt_rule": "will で未来を予測ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「will / be going to」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g023",
+      "name_ja": "未来表現：予定",
+      "pattern": "will / be going to",
+      "function_ja": "be going to で予定を表す",
+      "prompt_rule": "be going to で予定を表すことが自然に必要になる、短く実用的な文を作る。ターゲット構文「will / be going to」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g024",
+      "name_ja": "未来表現：意図",
+      "pattern": "will / be going to",
+      "function_ja": "be going to で意図を表す",
+      "prompt_rule": "be going to で意図を表すことが自然に必要になる、短く実用的な文を作る。ターゲット構文「will / be going to」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g025",
+      "name_ja": "未来表現：未来の否定・疑問",
+      "pattern": "will / be going to",
+      "function_ja": "will not / Will ...?",
+      "prompt_rule": "will not / Will ...?ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「will / be going to」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g026",
+      "name_ja": "can：能力",
+      "pattern": "can + 動詞原形",
+      "function_ja": "できる能力を表す",
+      "prompt_rule": "できる能力を表すことが自然に必要になる、短く実用的な文を作る。ターゲット構文「can + 動詞原形」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g027",
+      "name_ja": "can：可能性",
+      "pattern": "can + 動詞原形",
+      "function_ja": "状況的に可能であることを表す",
+      "prompt_rule": "状況的に可能であることを表すことが自然に必要になる、短く実用的な文を作る。ターゲット構文「can + 動詞原形」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g028",
+      "name_ja": "can：許可",
+      "pattern": "can + 動詞原形",
+      "function_ja": "Can I ...? で許可を求める",
+      "prompt_rule": "Can I ...? で許可を求めることが自然に必要になる、短く実用的な文を作る。ターゲット構文「can + 動詞原形」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g029",
+      "name_ja": "can：依頼",
+      "pattern": "can + 動詞原形",
+      "function_ja": "Can you ...? で依頼する",
+      "prompt_rule": "Can you ...? で依頼することが自然に必要になる、短く実用的な文を作る。ターゲット構文「can + 動詞原形」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g030",
+      "name_ja": "can：否定",
+      "pattern": "can + 動詞原形",
+      "function_ja": "cannot/can't で不可能を表す",
+      "prompt_rule": "cannot/can't で不可能を表すことが自然に必要になる、短く実用的な文を作る。ターゲット構文「can + 動詞原形」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g031",
+      "name_ja": "there構文：単数の存在",
+      "pattern": "there is / there are",
+      "function_ja": "there is で一つの存在を示す",
+      "prompt_rule": "there is で一つの存在を示すことが自然に必要になる、短く実用的な文を作る。ターゲット構文「there is / there are」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g032",
+      "name_ja": "there構文：複数の存在",
+      "pattern": "there is / there are",
+      "function_ja": "there are で複数の存在を示す",
+      "prompt_rule": "there are で複数の存在を示すことが自然に必要になる、短く実用的な文を作る。ターゲット構文「there is / there are」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g033",
+      "name_ja": "there構文：否定",
+      "pattern": "there is / there are",
+      "function_ja": "there isn't/aren't",
+      "prompt_rule": "there isn't/aren'tことが自然に必要になる、短く実用的な文を作る。ターゲット構文「there is / there are」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g034",
+      "name_ja": "there構文：疑問",
+      "pattern": "there is / there are",
+      "function_ja": "Is/Are there ...?",
+      "prompt_rule": "Is/Are there ...?ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「there is / there are」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g035",
+      "name_ja": "there構文：数量表現",
+      "pattern": "there is / there are",
+      "function_ja": "some/any と組み合わせる",
+      "prompt_rule": "some/any と組み合わせることが自然に必要になる、短く実用的な文を作る。ターゲット構文「there is / there are」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g036",
+      "name_ja": "名詞と限定詞：不定冠詞",
+      "pattern": "a/an/the・some/any・複数形",
+      "function_ja": "初出の単数可算名詞に a/an",
+      "prompt_rule": "初出の単数可算名詞に a/anことが自然に必要になる、短く実用的な文を作る。ターゲット構文「a/an/the・some/any・複数形」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g037",
+      "name_ja": "名詞と限定詞：定冠詞",
+      "pattern": "a/an/the・some/any・複数形",
+      "function_ja": "特定されたものに the",
+      "prompt_rule": "特定されたものに theことが自然に必要になる、短く実用的な文を作る。ターゲット構文「a/an/the・some/any・複数形」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g038",
+      "name_ja": "名詞と限定詞：複数形",
+      "pattern": "a/an/the・some/any・複数形",
+      "function_ja": "複数の可算名詞を表す",
+      "prompt_rule": "複数の可算名詞を表すことが自然に必要になる、短く実用的な文を作る。ターゲット構文「a/an/the・some/any・複数形」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g039",
+      "name_ja": "名詞と限定詞：some/any",
+      "pattern": "a/an/the・some/any・複数形",
+      "function_ja": "肯定・疑問・否定で数量を表す",
+      "prompt_rule": "肯定・疑問・否定で数量を表すことが自然に必要になる、短く実用的な文を作る。ターゲット構文「a/an/the・some/any・複数形」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g040",
+      "name_ja": "名詞と限定詞：所有格",
+      "pattern": "a/an/the・some/any・複数形",
+      "function_ja": "my/your/his/her/our/their",
+      "prompt_rule": "my/your/his/her/our/theirことが自然に必要になる、短く実用的な文を作る。ターゲット構文「a/an/the・some/any・複数形」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g041",
+      "name_ja": "形容詞・副詞：名詞修飾",
+      "pattern": "形容詞 / 基本副詞",
+      "function_ja": "形容詞を名詞の前に置く",
+      "prompt_rule": "形容詞を名詞の前に置くことが自然に必要になる、短く実用的な文を作る。ターゲット構文「形容詞 / 基本副詞」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g042",
+      "name_ja": "形容詞・副詞：補語",
+      "pattern": "形容詞 / 基本副詞",
+      "function_ja": "be + 形容詞で状態を表す",
+      "prompt_rule": "be + 形容詞で状態を表すことが自然に必要になる、短く実用的な文を作る。ターゲット構文「形容詞 / 基本副詞」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g043",
+      "name_ja": "形容詞・副詞：頻度副詞",
+      "pattern": "形容詞 / 基本副詞",
+      "function_ja": "always/often/sometimes/never",
+      "prompt_rule": "always/often/sometimes/neverことが自然に必要になる、短く実用的な文を作る。ターゲット構文「形容詞 / 基本副詞」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g044",
+      "name_ja": "形容詞・副詞：程度副詞",
+      "pattern": "形容詞 / 基本副詞",
+      "function_ja": "very/really で程度を表す",
+      "prompt_rule": "very/really で程度を表すことが自然に必要になる、短く実用的な文を作る。ターゲット構文「形容詞 / 基本副詞」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g045",
+      "name_ja": "形容詞・副詞：様態副詞",
+      "pattern": "形容詞 / 基本副詞",
+      "function_ja": "slowly/carefully などで動作を修飾",
+      "prompt_rule": "slowly/carefully などで動作を修飾ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「形容詞 / 基本副詞」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g046",
+      "name_ja": "前置詞・接続：時の前置詞",
+      "pattern": "at/in/on・and/but/because",
+      "function_ja": "at/in/on で時を表す",
+      "prompt_rule": "at/in/on で時を表すことが自然に必要になる、短く実用的な文を作る。ターゲット構文「at/in/on・and/but/because」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g047",
+      "name_ja": "前置詞・接続：場所の前置詞",
+      "pattern": "at/in/on・and/but/because",
+      "function_ja": "in/on/at/under/next to",
+      "prompt_rule": "in/on/at/under/next toことが自然に必要になる、短く実用的な文を作る。ターゲット構文「at/in/on・and/but/because」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g048",
+      "name_ja": "前置詞・接続：and",
+      "pattern": "at/in/on・and/but/because",
+      "function_ja": "情報を追加する",
+      "prompt_rule": "情報を追加することが自然に必要になる、短く実用的な文を作る。ターゲット構文「at/in/on・and/but/because」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g049",
+      "name_ja": "前置詞・接続：but",
+      "pattern": "at/in/on・and/but/because",
+      "function_ja": "対比を表す",
+      "prompt_rule": "対比を表すことが自然に必要になる、短く実用的な文を作る。ターゲット構文「at/in/on・and/but/because」を明確に使わせる。"
+    },
+    {
+      "id": "a1-g050",
+      "name_ja": "前置詞・接続：because",
+      "pattern": "at/in/on・and/but/because",
+      "function_ja": "理由を表す",
+      "prompt_rule": "理由を表すことが自然に必要になる、短く実用的な文を作る。ターゲット構文「at/in/on・and/but/because」を明確に使わせる。"
+    }
+  ],
+  "A2": [
+    {
+      "id": "a2-g001",
+      "name_ja": "現在完了：経験",
+      "pattern": "have/has + 過去分詞",
+      "function_ja": "have ever/never + 過去分詞",
+      "prompt_rule": "have ever/never + 過去分詞ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「have/has + 過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g002",
+      "name_ja": "現在完了：完了",
+      "pattern": "have/has + 過去分詞",
+      "function_ja": "just/already/yet と使う",
+      "prompt_rule": "just/already/yet と使うことが自然に必要になる、短く実用的な文を作る。ターゲット構文「have/has + 過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g003",
+      "name_ja": "現在完了：継続",
+      "pattern": "have/has + 過去分詞",
+      "function_ja": "for/since と使う",
+      "prompt_rule": "for/since と使うことが自然に必要になる、短く実用的な文を作る。ターゲット構文「have/has + 過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g004",
+      "name_ja": "現在完了：結果",
+      "pattern": "have/has + 過去分詞",
+      "function_ja": "過去の出来事の現在への結果",
+      "prompt_rule": "過去の出来事の現在への結果ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「have/has + 過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g005",
+      "name_ja": "現在完了：疑問",
+      "pattern": "have/has + 過去分詞",
+      "function_ja": "Have you ever ...?",
+      "prompt_rule": "Have you ever ...?ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「have/has + 過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g006",
+      "name_ja": "現在完了：否定",
+      "pattern": "have/has + 過去分詞",
+      "function_ja": "haven't/hasn't + 過去分詞",
+      "prompt_rule": "haven't/hasn't + 過去分詞ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「have/has + 過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g007",
+      "name_ja": "現在完了：been/gone",
+      "pattern": "have/has + 過去分詞",
+      "function_ja": "have been to と have gone to の区別",
+      "prompt_rule": "have been to と have gone to の区別ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「have/has + 過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g008",
+      "name_ja": "比較：比較級",
+      "pattern": "比較級・最上級・同等比較",
+      "function_ja": "-er/more ... than",
+      "prompt_rule": "-er/more ... thanことが自然に必要になる、短く実用的な文を作る。ターゲット構文「比較級・最上級・同等比較」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g009",
+      "name_ja": "比較：最上級",
+      "pattern": "比較級・最上級・同等比較",
+      "function_ja": "the -est/most ...",
+      "prompt_rule": "the -est/most ...ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「比較級・最上級・同等比較」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g010",
+      "name_ja": "比較：同等比較",
+      "pattern": "比較級・最上級・同等比較",
+      "function_ja": "as ... as",
+      "prompt_rule": "as ... asことが自然に必要になる、短く実用的な文を作る。ターゲット構文「比較級・最上級・同等比較」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g011",
+      "name_ja": "比較：比較級の否定",
+      "pattern": "比較級・最上級・同等比較",
+      "function_ja": "not as ... as",
+      "prompt_rule": "not as ... asことが自然に必要になる、短く実用的な文を作る。ターゲット構文「比較級・最上級・同等比較」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g012",
+      "name_ja": "比較：much/a little + 比較級",
+      "pattern": "比較級・最上級・同等比較",
+      "function_ja": "比較の程度",
+      "prompt_rule": "比較の程度ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「比較級・最上級・同等比較」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g013",
+      "name_ja": "比較：one of the + 最上級",
+      "pattern": "比較級・最上級・同等比較",
+      "function_ja": "最上級の集合表現",
+      "prompt_rule": "最上級の集合表現ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「比較級・最上級・同等比較」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g014",
+      "name_ja": "比較：比較対象省略",
+      "pattern": "比較級・最上級・同等比較",
+      "function_ja": "than I expected など自然な比較",
+      "prompt_rule": "than I expected など自然な比較ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「比較級・最上級・同等比較」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g015",
+      "name_ja": "不定詞：目的",
+      "pattern": "to + 動詞原形",
+      "function_ja": "〜するために",
+      "prompt_rule": "〜するためにことが自然に必要になる、短く実用的な文を作る。ターゲット構文「to + 動詞原形」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g016",
+      "name_ja": "不定詞：名詞用法",
+      "pattern": "to + 動詞原形",
+      "function_ja": "〜すること",
+      "prompt_rule": "〜することことが自然に必要になる、短く実用的な文を作る。ターゲット構文「to + 動詞原形」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g017",
+      "name_ja": "不定詞：形容詞用法",
+      "pattern": "to + 動詞原形",
+      "function_ja": "〜するための/〜すべき",
+      "prompt_rule": "〜するための/〜すべきことが自然に必要になる、短く実用的な文を作る。ターゲット構文「to + 動詞原形」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g018",
+      "name_ja": "不定詞：want to",
+      "pattern": "to + 動詞原形",
+      "function_ja": "希望",
+      "prompt_rule": "希望ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「to + 動詞原形」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g019",
+      "name_ja": "不定詞：need to",
+      "pattern": "to + 動詞原形",
+      "function_ja": "必要",
+      "prompt_rule": "必要ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「to + 動詞原形」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g020",
+      "name_ja": "不定詞：too ... to",
+      "pattern": "to + 動詞原形",
+      "function_ja": "〜すぎてできない",
+      "prompt_rule": "〜すぎてできないことが自然に必要になる、短く実用的な文を作る。ターゲット構文「to + 動詞原形」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g021",
+      "name_ja": "不定詞：... enough to",
+      "pattern": "to + 動詞原形",
+      "function_ja": "〜するのに十分",
+      "prompt_rule": "〜するのに十分ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「to + 動詞原形」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g022",
+      "name_ja": "動名詞：主語",
+      "pattern": "V-ing",
+      "function_ja": "〜することは…",
+      "prompt_rule": "〜することは…ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「V-ing」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g023",
+      "name_ja": "動名詞：目的語",
+      "pattern": "V-ing",
+      "function_ja": "enjoy/finish/avoid + V-ing",
+      "prompt_rule": "enjoy/finish/avoid + V-ingことが自然に必要になる、短く実用的な文を作る。ターゲット構文「V-ing」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g024",
+      "name_ja": "動名詞：前置詞後",
+      "pattern": "V-ing",
+      "function_ja": "after/before/by + V-ing",
+      "prompt_rule": "after/before/by + V-ingことが自然に必要になる、短く実用的な文を作る。ターゲット構文「V-ing」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g025",
+      "name_ja": "動名詞：go + V-ing",
+      "pattern": "V-ing",
+      "function_ja": "活動を表す",
+      "prompt_rule": "活動を表すことが自然に必要になる、短く実用的な文を作る。ターゲット構文「V-ing」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g026",
+      "name_ja": "動名詞：like + V-ing",
+      "pattern": "V-ing",
+      "function_ja": "好み",
+      "prompt_rule": "好みことが自然に必要になる、短く実用的な文を作る。ターゲット構文「V-ing」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g027",
+      "name_ja": "動名詞：stop + V-ing",
+      "pattern": "V-ing",
+      "function_ja": "行為をやめる",
+      "prompt_rule": "行為をやめることが自然に必要になる、短く実用的な文を作る。ターゲット構文「V-ing」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g028",
+      "name_ja": "動名詞：動名詞と不定詞の基本区別",
+      "pattern": "V-ing",
+      "function_ja": "目的語としての使い分け",
+      "prompt_rule": "目的語としての使い分けことが自然に必要になる、短く実用的な文を作る。ターゲット構文「V-ing」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g029",
+      "name_ja": "助動詞：should 助言",
+      "pattern": "should/must/have to/may/might",
+      "function_ja": "〜した方がよい",
+      "prompt_rule": "〜した方がよいことが自然に必要になる、短く実用的な文を作る。ターゲット構文「should/must/have to/may/might」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g030",
+      "name_ja": "助動詞：must 義務",
+      "pattern": "should/must/have to/may/might",
+      "function_ja": "強い義務",
+      "prompt_rule": "強い義務ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「should/must/have to/may/might」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g031",
+      "name_ja": "助動詞：have to 必要",
+      "pattern": "should/must/have to/may/might",
+      "function_ja": "外的必要",
+      "prompt_rule": "外的必要ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「should/must/have to/may/might」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g032",
+      "name_ja": "助動詞：mustn't 禁止",
+      "pattern": "should/must/have to/may/might",
+      "function_ja": "〜してはいけない",
+      "prompt_rule": "〜してはいけないことが自然に必要になる、短く実用的な文を作る。ターゲット構文「should/must/have to/may/might」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g033",
+      "name_ja": "助動詞：don't have to 不要",
+      "pattern": "should/must/have to/may/might",
+      "function_ja": "〜する必要はない",
+      "prompt_rule": "〜する必要はないことが自然に必要になる、短く実用的な文を作る。ターゲット構文「should/must/have to/may/might」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g034",
+      "name_ja": "助動詞：may 許可・可能性",
+      "pattern": "should/must/have to/may/might",
+      "function_ja": "〜してよい/かもしれない",
+      "prompt_rule": "〜してよい/かもしれないことが自然に必要になる、短く実用的な文を作る。ターゲット構文「should/must/have to/may/might」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g035",
+      "name_ja": "助動詞：might 弱い可能性",
+      "pattern": "should/must/have to/may/might",
+      "function_ja": "〜かもしれない",
+      "prompt_rule": "〜かもしれないことが自然に必要になる、短く実用的な文を作る。ターゲット構文「should/must/have to/may/might」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g036",
+      "name_ja": "受動態：現在受動",
+      "pattern": "be + 過去分詞",
+      "function_ja": "is/are + 過去分詞",
+      "prompt_rule": "is/are + 過去分詞ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「be + 過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g037",
+      "name_ja": "受動態：過去受動",
+      "pattern": "be + 過去分詞",
+      "function_ja": "was/were + 過去分詞",
+      "prompt_rule": "was/were + 過去分詞ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「be + 過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g038",
+      "name_ja": "受動態：by行為者",
+      "pattern": "be + 過去分詞",
+      "function_ja": "by + 行為者",
+      "prompt_rule": "by + 行為者ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「be + 過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g039",
+      "name_ja": "受動態：行為者省略",
+      "pattern": "be + 過去分詞",
+      "function_ja": "行為者が重要でない受動態",
+      "prompt_rule": "行為者が重要でない受動態ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「be + 過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g040",
+      "name_ja": "受動態：助動詞受動",
+      "pattern": "be + 過去分詞",
+      "function_ja": "can/must + be + 過去分詞",
+      "prompt_rule": "can/must + be + 過去分詞ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「be + 過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g041",
+      "name_ja": "受動態：疑問受動",
+      "pattern": "be + 過去分詞",
+      "function_ja": "Is it made ...?",
+      "prompt_rule": "Is it made ...?ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「be + 過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g042",
+      "name_ja": "受動態：否定受動",
+      "pattern": "be + 過去分詞",
+      "function_ja": "isn't/wasn't + 過去分詞",
+      "prompt_rule": "isn't/wasn't + 過去分詞ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「be + 過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g043",
+      "name_ja": "従属接続詞：because 理由",
+      "pattern": "because/if/when/before/after/while/although",
+      "function_ja": "理由節",
+      "prompt_rule": "理由節ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「because/if/when/before/after/while/although」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g044",
+      "name_ja": "従属接続詞：if 条件",
+      "pattern": "because/if/when/before/after/while/although",
+      "function_ja": "現実的な条件",
+      "prompt_rule": "現実的な条件ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「because/if/when/before/after/while/although」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g045",
+      "name_ja": "従属接続詞：when 時",
+      "pattern": "because/if/when/before/after/while/although",
+      "function_ja": "〜するとき",
+      "prompt_rule": "〜するときことが自然に必要になる、短く実用的な文を作る。ターゲット構文「because/if/when/before/after/while/although」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g046",
+      "name_ja": "従属接続詞：before",
+      "pattern": "because/if/when/before/after/while/although",
+      "function_ja": "〜する前に",
+      "prompt_rule": "〜する前にことが自然に必要になる、短く実用的な文を作る。ターゲット構文「because/if/when/before/after/while/although」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g047",
+      "name_ja": "従属接続詞：after",
+      "pattern": "because/if/when/before/after/while/although",
+      "function_ja": "〜した後で",
+      "prompt_rule": "〜した後でことが自然に必要になる、短く実用的な文を作る。ターゲット構文「because/if/when/before/after/while/although」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g048",
+      "name_ja": "従属接続詞：while",
+      "pattern": "because/if/when/before/after/while/although",
+      "function_ja": "〜している間",
+      "prompt_rule": "〜している間ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「because/if/when/before/after/while/although」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g049",
+      "name_ja": "従属接続詞：although",
+      "pattern": "because/if/when/before/after/while/although",
+      "function_ja": "〜だけれども",
+      "prompt_rule": "〜だけれどもことが自然に必要になる、短く実用的な文を作る。ターゲット構文「because/if/when/before/after/while/although」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g050",
+      "name_ja": "関係詞基礎：who 主格",
+      "pattern": "who/which/that",
+      "function_ja": "人を説明する",
+      "prompt_rule": "人を説明することが自然に必要になる、短く実用的な文を作る。ターゲット構文「who/which/that」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g051",
+      "name_ja": "関係詞基礎：which 主格",
+      "pattern": "who/which/that",
+      "function_ja": "物を説明する",
+      "prompt_rule": "物を説明することが自然に必要になる、短く実用的な文を作る。ターゲット構文「who/which/that」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g052",
+      "name_ja": "関係詞基礎：that 主格",
+      "pattern": "who/which/that",
+      "function_ja": "人・物を説明する",
+      "prompt_rule": "人・物を説明することが自然に必要になる、短く実用的な文を作る。ターゲット構文「who/which/that」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g053",
+      "name_ja": "関係詞基礎：目的格 who/which/that",
+      "pattern": "who/which/that",
+      "function_ja": "目的語を補う",
+      "prompt_rule": "目的語を補うことが自然に必要になる、短く実用的な文を作る。ターゲット構文「who/which/that」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g054",
+      "name_ja": "関係詞基礎：目的格省略",
+      "pattern": "who/which/that",
+      "function_ja": "省略可能な関係代名詞",
+      "prompt_rule": "省略可能な関係代名詞ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「who/which/that」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g055",
+      "name_ja": "関係詞基礎：where 基礎",
+      "pattern": "who/which/that",
+      "function_ja": "場所を説明する",
+      "prompt_rule": "場所を説明することが自然に必要になる、短く実用的な文を作る。ターゲット構文「who/which/that」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g056",
+      "name_ja": "関係詞基礎：関係詞の先行詞",
+      "pattern": "who/which/that",
+      "function_ja": "どの名詞を説明するか",
+      "prompt_rule": "どの名詞を説明するかことが自然に必要になる、短く実用的な文を作る。ターゲット構文「who/which/that」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g057",
+      "name_ja": "数量・代名詞：many/much",
+      "pattern": "much/many/few/little/some/any/each",
+      "function_ja": "可算・不可算の区別",
+      "prompt_rule": "可算・不可算の区別ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「much/many/few/little/some/any/each」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g058",
+      "name_ja": "数量・代名詞：a few/few",
+      "pattern": "much/many/few/little/some/any/each",
+      "function_ja": "少しある/ほとんどない",
+      "prompt_rule": "少しある/ほとんどないことが自然に必要になる、短く実用的な文を作る。ターゲット構文「much/many/few/little/some/any/each」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g059",
+      "name_ja": "数量・代名詞：a little/little",
+      "pattern": "much/many/few/little/some/any/each",
+      "function_ja": "少しある/ほとんどない",
+      "prompt_rule": "少しある/ほとんどないことが自然に必要になる、短く実用的な文を作る。ターゲット構文「much/many/few/little/some/any/each」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g060",
+      "name_ja": "数量・代名詞：some/any 応用",
+      "pattern": "much/many/few/little/some/any/each",
+      "function_ja": "依頼・勧誘で some",
+      "prompt_rule": "依頼・勧誘で someことが自然に必要になる、短く実用的な文を作る。ターゲット構文「much/many/few/little/some/any/each」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g061",
+      "name_ja": "数量・代名詞：each/every",
+      "pattern": "much/many/few/little/some/any/each",
+      "function_ja": "個別性と全体性",
+      "prompt_rule": "個別性と全体性ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「much/many/few/little/some/any/each」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g062",
+      "name_ja": "数量・代名詞：another/other",
+      "pattern": "much/many/few/little/some/any/each",
+      "function_ja": "別のもの・他のもの",
+      "prompt_rule": "別のもの・他のものことが自然に必要になる、短く実用的な文を作る。ターゲット構文「much/many/few/little/some/any/each」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g063",
+      "name_ja": "数量・代名詞：one/ones",
+      "pattern": "much/many/few/little/some/any/each",
+      "function_ja": "名詞の代用",
+      "prompt_rule": "名詞の代用ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「much/many/few/little/some/any/each」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g064",
+      "name_ja": "文型・補語：SVC",
+      "pattern": "SVO/SVC/SVOO/SVOC",
+      "function_ja": "be/become/look + 補語",
+      "prompt_rule": "be/become/look + 補語ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「SVO/SVC/SVOO/SVOC」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g065",
+      "name_ja": "文型・補語：SVO",
+      "pattern": "SVO/SVC/SVOO/SVOC",
+      "function_ja": "他動詞 + 目的語",
+      "prompt_rule": "他動詞 + 目的語ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「SVO/SVC/SVOO/SVOC」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g066",
+      "name_ja": "文型・補語：SVOO",
+      "pattern": "SVO/SVC/SVOO/SVOC",
+      "function_ja": "give/show/tell + 人 + 物",
+      "prompt_rule": "give/show/tell + 人 + 物ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「SVO/SVC/SVOO/SVOC」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g067",
+      "name_ja": "文型・補語：SVOOの書換え",
+      "pattern": "SVO/SVC/SVOO/SVOC",
+      "function_ja": "give A B → give B to A",
+      "prompt_rule": "give A B → give B to Aことが自然に必要になる、短く実用的な文を作る。ターゲット構文「SVO/SVC/SVOO/SVOC」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g068",
+      "name_ja": "文型・補語：SVOC make",
+      "pattern": "SVO/SVC/SVOO/SVOC",
+      "function_ja": "make + O + 形容詞",
+      "prompt_rule": "make + O + 形容詞ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「SVO/SVC/SVOO/SVOC」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g069",
+      "name_ja": "文型・補語：SVOC call",
+      "pattern": "SVO/SVC/SVOO/SVOC",
+      "function_ja": "call + O + 名詞",
+      "prompt_rule": "call + O + 名詞ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「SVO/SVC/SVOO/SVOC」を明確に使わせる。"
+    },
+    {
+      "id": "a2-g070",
+      "name_ja": "文型・補語：知覚の基礎",
+      "pattern": "SVO/SVC/SVOO/SVOC",
+      "function_ja": "see/hear + O + 動詞原形",
+      "prompt_rule": "see/hear + O + 動詞原形ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「SVO/SVC/SVOO/SVOC」を明確に使わせる。"
+    }
+  ],
+  "B1": [
+    {
+      "id": "b1-g001",
+      "name_ja": "過去完了：過去より前",
+      "pattern": "had + 過去分詞",
+      "function_ja": "過去の基準時より以前",
+      "prompt_rule": "過去の基準時より以前ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「had + 過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g002",
+      "name_ja": "過去完了：完了",
+      "pattern": "had + 過去分詞",
+      "function_ja": "その時までに完了",
+      "prompt_rule": "その時までに完了ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「had + 過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g003",
+      "name_ja": "過去完了：経験",
+      "pattern": "had + 過去分詞",
+      "function_ja": "その時までの経験",
+      "prompt_rule": "その時までの経験ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「had + 過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g004",
+      "name_ja": "過去完了：継続",
+      "pattern": "had + 過去分詞",
+      "function_ja": "その時まで続いていた状態",
+      "prompt_rule": "その時まで続いていた状態ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「had + 過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g005",
+      "name_ja": "過去完了：before節",
+      "pattern": "had + 過去分詞",
+      "function_ja": "before + 過去形との関係",
+      "prompt_rule": "before + 過去形との関係ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「had + 過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g006",
+      "name_ja": "過去完了：after節",
+      "pattern": "had + 過去分詞",
+      "function_ja": "after + 過去完了",
+      "prompt_rule": "after + 過去完了ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「had + 過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g007",
+      "name_ja": "過去完了：when節",
+      "pattern": "had + 過去分詞",
+      "function_ja": "出来事の前後関係を明確化",
+      "prompt_rule": "出来事の前後関係を明確化ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「had + 過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g008",
+      "name_ja": "過去完了：already",
+      "pattern": "had + 過去分詞",
+      "function_ja": "had already + 過去分詞",
+      "prompt_rule": "had already + 過去分詞ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「had + 過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g009",
+      "name_ja": "過去完了：never",
+      "pattern": "had + 過去分詞",
+      "function_ja": "had never + 過去分詞",
+      "prompt_rule": "had never + 過去分詞ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「had + 過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g010",
+      "name_ja": "過去完了：理由背景",
+      "pattern": "had + 過去分詞",
+      "function_ja": "過去の結果の背景を示す",
+      "prompt_rule": "過去の結果の背景を示すことが自然に必要になる、短く実用的な文を作る。ターゲット構文「had + 過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g011",
+      "name_ja": "現在完了進行形：継続動作",
+      "pattern": "have/has been + V-ing",
+      "function_ja": "過去から今まで続く動作",
+      "prompt_rule": "過去から今まで続く動作ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「have/has been + V-ing」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g012",
+      "name_ja": "現在完了進行形：最近の活動",
+      "pattern": "have/has been + V-ing",
+      "function_ja": "最近続けている活動",
+      "prompt_rule": "最近続けている活動ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「have/has been + V-ing」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g013",
+      "name_ja": "現在完了進行形：for",
+      "pattern": "have/has been + V-ing",
+      "function_ja": "期間を示す",
+      "prompt_rule": "期間を示すことが自然に必要になる、短く実用的な文を作る。ターゲット構文「have/has been + V-ing」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g014",
+      "name_ja": "現在完了進行形：since",
+      "pattern": "have/has been + V-ing",
+      "function_ja": "起点を示す",
+      "prompt_rule": "起点を示すことが自然に必要になる、短く実用的な文を作る。ターゲット構文「have/has been + V-ing」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g015",
+      "name_ja": "現在完了進行形：疑問",
+      "pattern": "have/has been + V-ing",
+      "function_ja": "How long have you been ...?",
+      "prompt_rule": "How long have you been ...?ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「have/has been + V-ing」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g016",
+      "name_ja": "現在完了進行形：一時的継続",
+      "pattern": "have/has been + V-ing",
+      "function_ja": "一時的な継続活動",
+      "prompt_rule": "一時的な継続活動ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「have/has been + V-ing」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g017",
+      "name_ja": "現在完了進行形：現在結果",
+      "pattern": "have/has been + V-ing",
+      "function_ja": "活動の結果が今見える",
+      "prompt_rule": "活動の結果が今見えることが自然に必要になる、短く実用的な文を作る。ターゲット構文「have/has been + V-ing」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g018",
+      "name_ja": "現在完了進行形：否定",
+      "pattern": "have/has been + V-ing",
+      "function_ja": "haven't been + V-ing",
+      "prompt_rule": "haven't been + V-ingことが自然に必要になる、短く実用的な文を作る。ターゲット構文「have/has been + V-ing」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g019",
+      "name_ja": "現在完了進行形：現在完了との比較",
+      "pattern": "have/has been + V-ing",
+      "function_ja": "状態/回数との使い分け",
+      "prompt_rule": "状態/回数との使い分けことが自然に必要になる、短く実用的な文を作る。ターゲット構文「have/has been + V-ing」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g020",
+      "name_ja": "現在完了進行形：work/study型",
+      "pattern": "have/has been + V-ing",
+      "function_ja": "長期活動を自然に表す",
+      "prompt_rule": "長期活動を自然に表すことが自然に必要になる、短く実用的な文を作る。ターゲット構文「have/has been + V-ing」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g021",
+      "name_ja": "未来進行・未来完了：未来進行",
+      "pattern": "will be V-ing / will have p.p.",
+      "function_ja": "未来のある時点で進行中",
+      "prompt_rule": "未来のある時点で進行中ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「will be V-ing / will have p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g022",
+      "name_ja": "未来進行・未来完了：予定の確認",
+      "pattern": "will be V-ing / will have p.p.",
+      "function_ja": "Will you be ...?",
+      "prompt_rule": "Will you be ...?ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「will be V-ing / will have p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g023",
+      "name_ja": "未来進行・未来完了：丁寧な予定質問",
+      "pattern": "will be V-ing / will have p.p.",
+      "function_ja": "相手の予定を控えめに尋ねる",
+      "prompt_rule": "相手の予定を控えめに尋ねることが自然に必要になる、短く実用的な文を作る。ターゲット構文「will be V-ing / will have p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g024",
+      "name_ja": "未来進行・未来完了：未来完了",
+      "pattern": "will be V-ing / will have p.p.",
+      "function_ja": "未来の期限までに完了",
+      "prompt_rule": "未来の期限までに完了ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「will be V-ing / will have p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g025",
+      "name_ja": "未来進行・未来完了：by + 時点",
+      "pattern": "will be V-ing / will have p.p.",
+      "function_ja": "期限を示す",
+      "prompt_rule": "期限を示すことが自然に必要になる、短く実用的な文を作る。ターゲット構文「will be V-ing / will have p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g026",
+      "name_ja": "未来進行・未来完了：未来完了経験",
+      "pattern": "will be V-ing / will have p.p.",
+      "function_ja": "未来時点までの経験・回数",
+      "prompt_rule": "未来時点までの経験・回数ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「will be V-ing / will have p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g027",
+      "name_ja": "未来進行・未来完了：未来進行否定",
+      "pattern": "will be V-ing / will have p.p.",
+      "function_ja": "won't be V-ing",
+      "prompt_rule": "won't be V-ingことが自然に必要になる、短く実用的な文を作る。ターゲット構文「will be V-ing / will have p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g028",
+      "name_ja": "未来進行・未来完了：未来完了否定",
+      "pattern": "will be V-ing / will have p.p.",
+      "function_ja": "won't have p.p.",
+      "prompt_rule": "won't have p.p.ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「will be V-ing / will have p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g029",
+      "name_ja": "未来進行・未来完了：予測される進行",
+      "pattern": "will be V-ing / will have p.p.",
+      "function_ja": "自然な成り行きとしての未来",
+      "prompt_rule": "自然な成り行きとしての未来ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「will be V-ing / will have p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g030",
+      "name_ja": "未来進行・未来完了：期限表現",
+      "pattern": "will be V-ing / will have p.p.",
+      "function_ja": "by the time と未来完了",
+      "prompt_rule": "by the time と未来完了ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「will be V-ing / will have p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g031",
+      "name_ja": "仮定法基礎：現在の反実仮想",
+      "pattern": "if + 過去形, would + 動詞原形",
+      "function_ja": "今の事実と異なる仮定",
+      "prompt_rule": "今の事実と異なる仮定ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「if + 過去形, would + 動詞原形」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g032",
+      "name_ja": "仮定法基礎：助言 If I were you",
+      "pattern": "if + 過去形, would + 動詞原形",
+      "function_ja": "相手への助言",
+      "prompt_rule": "相手への助言ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「if + 過去形, would + 動詞原形」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g033",
+      "name_ja": "仮定法基礎：could",
+      "pattern": "if + 過去形, would + 動詞原形",
+      "function_ja": "能力・可能性の仮定",
+      "prompt_rule": "能力・可能性の仮定ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「if + 過去形, would + 動詞原形」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g034",
+      "name_ja": "仮定法基礎：might",
+      "pattern": "if + 過去形, would + 動詞原形",
+      "function_ja": "可能性の仮定",
+      "prompt_rule": "可能性の仮定ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「if + 過去形, would + 動詞原形」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g035",
+      "name_ja": "仮定法基礎：were",
+      "pattern": "if + 過去形, would + 動詞原形",
+      "function_ja": "I/he/she でも were",
+      "prompt_rule": "I/he/she でも wereことが自然に必要になる、短く実用的な文を作る。ターゲット構文「if + 過去形, would + 動詞原形」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g036",
+      "name_ja": "仮定法基礎：否定仮定",
+      "pattern": "if + 過去形, would + 動詞原形",
+      "function_ja": "if ... didn't ...",
+      "prompt_rule": "if ... didn't ...ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「if + 過去形, would + 動詞原形」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g037",
+      "name_ja": "仮定法基礎：願望 wish + 過去形",
+      "pattern": "if + 過去形, would + 動詞原形",
+      "function_ja": "現在の願望",
+      "prompt_rule": "現在の願望ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「if + 過去形, would + 動詞原形」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g038",
+      "name_ja": "仮定法基礎：would rather",
+      "pattern": "if + 過去形, would + 動詞原形",
+      "function_ja": "仮定的な好み",
+      "prompt_rule": "仮定的な好みことが自然に必要になる、短く実用的な文を作る。ターゲット構文「if + 過去形, would + 動詞原形」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g039",
+      "name_ja": "仮定法基礎：条件結果",
+      "pattern": "if + 過去形, would + 動詞原形",
+      "function_ja": "仮定と結果を対応させる",
+      "prompt_rule": "仮定と結果を対応させることが自然に必要になる、短く実用的な文を作る。ターゲット構文「if + 過去形, would + 動詞原形」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g040",
+      "name_ja": "仮定法基礎：現実条件との比較",
+      "pattern": "if + 過去形, would + 動詞原形",
+      "function_ja": "if現在形との違い",
+      "prompt_rule": "if現在形との違いことが自然に必要になる、短く実用的な文を作る。ターゲット構文「if + 過去形, would + 動詞原形」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g041",
+      "name_ja": "間接疑問：where",
+      "pattern": "疑問詞 + S + V",
+      "function_ja": "Do you know where ...?",
+      "prompt_rule": "Do you know where ...?ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「疑問詞 + S + V」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g042",
+      "name_ja": "間接疑問：when",
+      "pattern": "疑問詞 + S + V",
+      "function_ja": "Could you tell me when ...?",
+      "prompt_rule": "Could you tell me when ...?ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「疑問詞 + S + V」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g043",
+      "name_ja": "間接疑問：what",
+      "pattern": "疑問詞 + S + V",
+      "function_ja": "I wonder what ...",
+      "prompt_rule": "I wonder what ...ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「疑問詞 + S + V」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g044",
+      "name_ja": "間接疑問：who",
+      "pattern": "疑問詞 + S + V",
+      "function_ja": "Do you know who ...?",
+      "prompt_rule": "Do you know who ...?ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「疑問詞 + S + V」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g045",
+      "name_ja": "間接疑問：how",
+      "pattern": "疑問詞 + S + V",
+      "function_ja": "Can you tell me how ...?",
+      "prompt_rule": "Can you tell me how ...?ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「疑問詞 + S + V」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g046",
+      "name_ja": "間接疑問：whether/if",
+      "pattern": "疑問詞 + S + V",
+      "function_ja": "I don't know whether/if ...",
+      "prompt_rule": "I don't know whether/if ...ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「疑問詞 + S + V」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g047",
+      "name_ja": "間接疑問：語順",
+      "pattern": "疑問詞 + S + V",
+      "function_ja": "疑問文語順にしない",
+      "prompt_rule": "疑問文語順にしないことが自然に必要になる、短く実用的な文を作る。ターゲット構文「疑問詞 + S + V」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g048",
+      "name_ja": "間接疑問：丁寧依頼",
+      "pattern": "疑問詞 + S + V",
+      "function_ja": "Could you tell me ...",
+      "prompt_rule": "Could you tell me ...ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「疑問詞 + S + V」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g049",
+      "name_ja": "間接疑問：埋め込み疑問",
+      "pattern": "疑問詞 + S + V",
+      "function_ja": "主節の中に疑問内容を入れる",
+      "prompt_rule": "主節の中に疑問内容を入れることが自然に必要になる、短く実用的な文を作る。ターゲット構文「疑問詞 + S + V」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g050",
+      "name_ja": "間接疑問：do you think",
+      "pattern": "疑問詞 + S + V",
+      "function_ja": "Who do you think ...? 型",
+      "prompt_rule": "Who do you think ...? 型ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「疑問詞 + S + V」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g051",
+      "name_ja": "関係詞応用：whose",
+      "pattern": "whose/where/when/非制限",
+      "function_ja": "所有関係",
+      "prompt_rule": "所有関係ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「whose/where/when/非制限」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g052",
+      "name_ja": "関係詞応用：where",
+      "pattern": "whose/where/when/非制限",
+      "function_ja": "場所を説明",
+      "prompt_rule": "場所を説明ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「whose/where/when/非制限」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g053",
+      "name_ja": "関係詞応用：when",
+      "pattern": "whose/where/when/非制限",
+      "function_ja": "時を説明",
+      "prompt_rule": "時を説明ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「whose/where/when/非制限」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g054",
+      "name_ja": "関係詞応用：why",
+      "pattern": "whose/where/when/非制限",
+      "function_ja": "reason why",
+      "prompt_rule": "reason whyことが自然に必要になる、短く実用的な文を作る。ターゲット構文「whose/where/when/非制限」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g055",
+      "name_ja": "関係詞応用：非制限 who",
+      "pattern": "whose/where/when/非制限",
+      "function_ja": "人物への補足",
+      "prompt_rule": "人物への補足ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「whose/where/when/非制限」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g056",
+      "name_ja": "関係詞応用：非制限 which",
+      "pattern": "whose/where/when/非制限",
+      "function_ja": "事実・物への補足",
+      "prompt_rule": "事実・物への補足ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「whose/where/when/非制限」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g057",
+      "name_ja": "関係詞応用：前文を受ける which",
+      "pattern": "whose/where/when/非制限",
+      "function_ja": "文全体を受ける",
+      "prompt_rule": "文全体を受けることが自然に必要になる、短く実用的な文を作る。ターゲット構文「whose/where/when/非制限」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g058",
+      "name_ja": "関係詞応用：目的格省略",
+      "pattern": "whose/where/when/非制限",
+      "function_ja": "自然な省略",
+      "prompt_rule": "自然な省略ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「whose/where/when/非制限」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g059",
+      "name_ja": "関係詞応用：that不可",
+      "pattern": "whose/where/when/非制限",
+      "function_ja": "非制限で that を使わない",
+      "prompt_rule": "非制限で that を使わないことが自然に必要になる、短く実用的な文を作る。ターゲット構文「whose/where/when/非制限」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g060",
+      "name_ja": "関係詞応用：関係詞選択",
+      "pattern": "whose/where/when/非制限",
+      "function_ja": "who/which/where の使い分け",
+      "prompt_rule": "who/which/where の使い分けことが自然に必要になる、短く実用的な文を作る。ターゲット構文「whose/where/when/非制限」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g061",
+      "name_ja": "分詞：V-ing前置修飾",
+      "pattern": "現在分詞・過去分詞",
+      "function_ja": "進行・能動の意味",
+      "prompt_rule": "進行・能動の意味ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「現在分詞・過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g062",
+      "name_ja": "分詞：p.p.前置修飾",
+      "pattern": "現在分詞・過去分詞",
+      "function_ja": "受動・完了の意味",
+      "prompt_rule": "受動・完了の意味ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「現在分詞・過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g063",
+      "name_ja": "分詞：後置修飾 V-ing",
+      "pattern": "現在分詞・過去分詞",
+      "function_ja": "名詞を後ろから説明",
+      "prompt_rule": "名詞を後ろから説明ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「現在分詞・過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g064",
+      "name_ja": "分詞：後置修飾 p.p.",
+      "pattern": "現在分詞・過去分詞",
+      "function_ja": "受動の後置修飾",
+      "prompt_rule": "受動の後置修飾ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「現在分詞・過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g065",
+      "name_ja": "分詞：感情形容詞 -ing",
+      "pattern": "現在分詞・過去分詞",
+      "function_ja": "物事が感情を起こす",
+      "prompt_rule": "物事が感情を起こすことが自然に必要になる、短く実用的な文を作る。ターゲット構文「現在分詞・過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g066",
+      "name_ja": "分詞：感情形容詞 -ed",
+      "pattern": "現在分詞・過去分詞",
+      "function_ja": "人が感じる",
+      "prompt_rule": "人が感じることが自然に必要になる、短く実用的な文を作る。ターゲット構文「現在分詞・過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g067",
+      "name_ja": "分詞：see O V-ing",
+      "pattern": "現在分詞・過去分詞",
+      "function_ja": "動作の途中を知覚",
+      "prompt_rule": "動作の途中を知覚ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「現在分詞・過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g068",
+      "name_ja": "分詞：keep O V-ing",
+      "pattern": "現在分詞・過去分詞",
+      "function_ja": "状態を継続",
+      "prompt_rule": "状態を継続ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「現在分詞・過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g069",
+      "name_ja": "分詞：have O p.p.",
+      "pattern": "現在分詞・過去分詞",
+      "function_ja": "物を〜してもらう基礎",
+      "prompt_rule": "物を〜してもらう基礎ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「現在分詞・過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g070",
+      "name_ja": "分詞：分詞と関係詞の書換え",
+      "pattern": "現在分詞・過去分詞",
+      "function_ja": "簡潔な修飾",
+      "prompt_rule": "簡潔な修飾ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「現在分詞・過去分詞」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g071",
+      "name_ja": "使役・知覚：make O do",
+      "pattern": "make/let/have/get/see/hear",
+      "function_ja": "強制・結果",
+      "prompt_rule": "強制・結果ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「make/let/have/get/see/hear」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g072",
+      "name_ja": "使役・知覚：let O do",
+      "pattern": "make/let/have/get/see/hear",
+      "function_ja": "許可",
+      "prompt_rule": "許可ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「make/let/have/get/see/hear」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g073",
+      "name_ja": "使役・知覚：have O do",
+      "pattern": "make/let/have/get/see/hear",
+      "function_ja": "依頼・手配",
+      "prompt_rule": "依頼・手配ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「make/let/have/get/see/hear」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g074",
+      "name_ja": "使役・知覚：get O to do",
+      "pattern": "make/let/have/get/see/hear",
+      "function_ja": "働きかけ",
+      "prompt_rule": "働きかけことが自然に必要になる、短く実用的な文を作る。ターゲット構文「make/let/have/get/see/hear」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g075",
+      "name_ja": "使役・知覚：have O p.p.",
+      "pattern": "make/let/have/get/see/hear",
+      "function_ja": "〜してもらう",
+      "prompt_rule": "〜してもらうことが自然に必要になる、短く実用的な文を作る。ターゲット構文「make/let/have/get/see/hear」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g076",
+      "name_ja": "使役・知覚：get O p.p.",
+      "pattern": "make/let/have/get/see/hear",
+      "function_ja": "〜してもらう/状態変化",
+      "prompt_rule": "〜してもらう/状態変化ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「make/let/have/get/see/hear」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g077",
+      "name_ja": "使役・知覚：see O do",
+      "pattern": "make/let/have/get/see/hear",
+      "function_ja": "動作全体を見る",
+      "prompt_rule": "動作全体を見ることが自然に必要になる、短く実用的な文を作る。ターゲット構文「make/let/have/get/see/hear」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g078",
+      "name_ja": "使役・知覚：see O doing",
+      "pattern": "make/let/have/get/see/hear",
+      "function_ja": "途中を見る",
+      "prompt_rule": "途中を見ることが自然に必要になる、短く実用的な文を作る。ターゲット構文「make/let/have/get/see/hear」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g079",
+      "name_ja": "使役・知覚：hear O do",
+      "pattern": "make/let/have/get/see/hear",
+      "function_ja": "動作全体を聞く",
+      "prompt_rule": "動作全体を聞くことが自然に必要になる、短く実用的な文を作る。ターゲット構文「make/let/have/get/see/hear」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g080",
+      "name_ja": "使役・知覚：hear O doing",
+      "pattern": "make/let/have/get/see/hear",
+      "function_ja": "途中を聞く",
+      "prompt_rule": "途中を聞くことが自然に必要になる、短く実用的な文を作る。ターゲット構文「make/let/have/get/see/hear」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g081",
+      "name_ja": "助動詞完了：should have",
+      "pattern": "should/could/might/must + have p.p.",
+      "function_ja": "〜すべきだった",
+      "prompt_rule": "〜すべきだったことが自然に必要になる、短く実用的な文を作る。ターゲット構文「should/could/might/must + have p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g082",
+      "name_ja": "助動詞完了：shouldn't have",
+      "pattern": "should/could/might/must + have p.p.",
+      "function_ja": "〜すべきでなかった",
+      "prompt_rule": "〜すべきでなかったことが自然に必要になる、短く実用的な文を作る。ターゲット構文「should/could/might/must + have p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g083",
+      "name_ja": "助動詞完了：could have",
+      "pattern": "should/could/might/must + have p.p.",
+      "function_ja": "〜できたのに/可能だった",
+      "prompt_rule": "〜できたのに/可能だったことが自然に必要になる、短く実用的な文を作る。ターゲット構文「should/could/might/must + have p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g084",
+      "name_ja": "助動詞完了：might have",
+      "pattern": "should/could/might/must + have p.p.",
+      "function_ja": "〜だったかもしれない",
+      "prompt_rule": "〜だったかもしれないことが自然に必要になる、短く実用的な文を作る。ターゲット構文「should/could/might/must + have p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g085",
+      "name_ja": "助動詞完了：must have",
+      "pattern": "should/could/might/must + have p.p.",
+      "function_ja": "〜だったに違いない",
+      "prompt_rule": "〜だったに違いないことが自然に必要になる、短く実用的な文を作る。ターゲット構文「should/could/might/must + have p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g086",
+      "name_ja": "助動詞完了：can't have",
+      "pattern": "should/could/might/must + have p.p.",
+      "function_ja": "〜だったはずがない",
+      "prompt_rule": "〜だったはずがないことが自然に必要になる、短く実用的な文を作る。ターゲット構文「should/could/might/must + have p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g087",
+      "name_ja": "助動詞完了：needn't have",
+      "pattern": "should/could/might/must + have p.p.",
+      "function_ja": "する必要はなかったのに実際した",
+      "prompt_rule": "する必要はなかったのに実際したことが自然に必要になる、短く実用的な文を作る。ターゲット構文「should/could/might/must + have p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g088",
+      "name_ja": "助動詞完了：推量の強さ",
+      "pattern": "should/could/might/must + have p.p.",
+      "function_ja": "must/might/can't have",
+      "prompt_rule": "must/might/can't haveことが自然に必要になる、短く実用的な文を作る。ターゲット構文「should/could/might/must + have p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g089",
+      "name_ja": "助動詞完了：過去の後悔",
+      "pattern": "should/could/might/must + have p.p.",
+      "function_ja": "should have を使う",
+      "prompt_rule": "should have を使うことが自然に必要になる、短く実用的な文を作る。ターゲット構文「should/could/might/must + have p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g090",
+      "name_ja": "助動詞完了：過去の可能性",
+      "pattern": "should/could/might/must + have p.p.",
+      "function_ja": "could/might have を区別",
+      "prompt_rule": "could/might have を区別ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「should/could/might/must + have p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g091",
+      "name_ja": "報告・伝達：say that",
+      "pattern": "say/tell/ask・時制の一致",
+      "function_ja": "発言内容を伝える",
+      "prompt_rule": "発言内容を伝えることが自然に必要になる、短く実用的な文を作る。ターゲット構文「say/tell/ask・時制の一致」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g092",
+      "name_ja": "報告・伝達：tell 人 that",
+      "pattern": "say/tell/ask・時制の一致",
+      "function_ja": "人に伝える",
+      "prompt_rule": "人に伝えることが自然に必要になる、短く実用的な文を作る。ターゲット構文「say/tell/ask・時制の一致」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g093",
+      "name_ja": "報告・伝達：ask if",
+      "pattern": "say/tell/ask・時制の一致",
+      "function_ja": "Yes/No疑問を間接話法に",
+      "prompt_rule": "Yes/No疑問を間接話法にことが自然に必要になる、短く実用的な文を作る。ターゲット構文「say/tell/ask・時制の一致」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g094",
+      "name_ja": "報告・伝達：ask wh-",
+      "pattern": "say/tell/ask・時制の一致",
+      "function_ja": "疑問詞疑問を間接話法に",
+      "prompt_rule": "疑問詞疑問を間接話法にことが自然に必要になる、短く実用的な文を作る。ターゲット構文「say/tell/ask・時制の一致」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g095",
+      "name_ja": "報告・伝達：時制の一致",
+      "pattern": "say/tell/ask・時制の一致",
+      "function_ja": "過去の発言で時制を下げる",
+      "prompt_rule": "過去の発言で時制を下げることが自然に必要になる、短く実用的な文を作る。ターゲット構文「say/tell/ask・時制の一致」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g096",
+      "name_ja": "報告・伝達：代名詞変化",
+      "pattern": "say/tell/ask・時制の一致",
+      "function_ja": "話者に合わせて代名詞を変える",
+      "prompt_rule": "話者に合わせて代名詞を変えることが自然に必要になる、短く実用的な文を作る。ターゲット構文「say/tell/ask・時制の一致」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g097",
+      "name_ja": "報告・伝達：時表現変化",
+      "pattern": "say/tell/ask・時制の一致",
+      "function_ja": "today→that day など",
+      "prompt_rule": "today→that day などことが自然に必要になる、短く実用的な文を作る。ターゲット構文「say/tell/ask・時制の一致」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g098",
+      "name_ja": "報告・伝達：命令の伝達",
+      "pattern": "say/tell/ask・時制の一致",
+      "function_ja": "tell/ask 人 to do",
+      "prompt_rule": "tell/ask 人 to doことが自然に必要になる、短く実用的な文を作る。ターゲット構文「say/tell/ask・時制の一致」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g099",
+      "name_ja": "報告・伝達：否定命令",
+      "pattern": "say/tell/ask・時制の一致",
+      "function_ja": "tell 人 not to do",
+      "prompt_rule": "tell 人 not to doことが自然に必要になる、短く実用的な文を作る。ターゲット構文「say/tell/ask・時制の一致」を明確に使わせる。"
+    },
+    {
+      "id": "b1-g100",
+      "name_ja": "報告・伝達：報告動詞",
+      "pattern": "say/tell/ask・時制の一致",
+      "function_ja": "explain/mention/announce that",
+      "prompt_rule": "explain/mention/announce thatことが自然に必要になる、短く実用的な文を作る。ターゲット構文「say/tell/ask・時制の一致」を明確に使わせる。"
+    }
+  ],
+  "B2": [
+    {
+      "id": "b2-g001",
+      "name_ja": "仮定法過去完了：過去の反実仮想",
+      "pattern": "if + had p.p., would have p.p.",
+      "function_ja": "過去の事実と異なる仮定",
+      "prompt_rule": "過去の事実と異なる仮定ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「if + had p.p., would have p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g002",
+      "name_ja": "仮定法過去完了：後悔",
+      "pattern": "if + had p.p., would have p.p.",
+      "function_ja": "別の行動なら別結果だった",
+      "prompt_rule": "別の行動なら別結果だったことが自然に必要になる、短く実用的な文を作る。ターゲット構文「if + had p.p., would have p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g003",
+      "name_ja": "仮定法過去完了：could have",
+      "pattern": "if + had p.p., would have p.p.",
+      "function_ja": "可能性・能力の仮定",
+      "prompt_rule": "可能性・能力の仮定ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「if + had p.p., would have p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g004",
+      "name_ja": "仮定法過去完了：might have",
+      "pattern": "if + had p.p., would have p.p.",
+      "function_ja": "起こり得た結果",
+      "prompt_rule": "起こり得た結果ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「if + had p.p., would have p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g005",
+      "name_ja": "仮定法過去完了：否定仮定",
+      "pattern": "if + had p.p., would have p.p.",
+      "function_ja": "if ... hadn't ...",
+      "prompt_rule": "if ... hadn't ...ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「if + had p.p., would have p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g006",
+      "name_ja": "仮定法過去完了：結果節否定",
+      "pattern": "if + had p.p., would have p.p.",
+      "function_ja": "wouldn't have ...",
+      "prompt_rule": "wouldn't have ...ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「if + had p.p., would have p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g007",
+      "name_ja": "仮定法過去完了：wish + had p.p.",
+      "pattern": "if + had p.p., would have p.p.",
+      "function_ja": "過去への願望・後悔",
+      "prompt_rule": "過去への願望・後悔ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「if + had p.p., would have p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g008",
+      "name_ja": "仮定法過去完了：if only + had p.p.",
+      "pattern": "if + had p.p., would have p.p.",
+      "function_ja": "強い後悔",
+      "prompt_rule": "強い後悔ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「if + had p.p., would have p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g009",
+      "name_ja": "仮定法過去完了：混合仮定法",
+      "pattern": "if + had p.p., would have p.p.",
+      "function_ja": "過去条件→現在結果",
+      "prompt_rule": "過去条件→現在結果ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「if + had p.p., would have p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g010",
+      "name_ja": "仮定法過去完了：条件省略への橋渡し",
+      "pattern": "if + had p.p., would have p.p.",
+      "function_ja": "Had I ... の基礎",
+      "prompt_rule": "Had I ... の基礎ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「if + had p.p., would have p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g011",
+      "name_ja": "分詞構文：同時",
+      "pattern": "V-ing / p.p. / having p.p.",
+      "function_ja": "〜しながら",
+      "prompt_rule": "〜しながらことが自然に必要になる、短く実用的な文を作る。ターゲット構文「V-ing / p.p. / having p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g012",
+      "name_ja": "分詞構文：理由",
+      "pattern": "V-ing / p.p. / having p.p.",
+      "function_ja": "〜なので",
+      "prompt_rule": "〜なのでことが自然に必要になる、短く実用的な文を作る。ターゲット構文「V-ing / p.p. / having p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g013",
+      "name_ja": "分詞構文：時",
+      "pattern": "V-ing / p.p. / having p.p.",
+      "function_ja": "〜すると/〜したとき",
+      "prompt_rule": "〜すると/〜したときことが自然に必要になる、短く実用的な文を作る。ターゲット構文「V-ing / p.p. / having p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g014",
+      "name_ja": "分詞構文：結果",
+      "pattern": "V-ing / p.p. / having p.p.",
+      "function_ja": "その結果〜",
+      "prompt_rule": "その結果〜ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「V-ing / p.p. / having p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g015",
+      "name_ja": "分詞構文：受動",
+      "pattern": "V-ing / p.p. / having p.p.",
+      "function_ja": "p.p. で受動の意味",
+      "prompt_rule": "p.p. で受動の意味ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「V-ing / p.p. / having p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g016",
+      "name_ja": "分詞構文：完了",
+      "pattern": "V-ing / p.p. / having p.p.",
+      "function_ja": "having p.p. で先行",
+      "prompt_rule": "having p.p. で先行ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「V-ing / p.p. / having p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g017",
+      "name_ja": "分詞構文：否定",
+      "pattern": "V-ing / p.p. / having p.p.",
+      "function_ja": "not V-ing",
+      "prompt_rule": "not V-ingことが自然に必要になる、短く実用的な文を作る。ターゲット構文「V-ing / p.p. / having p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g018",
+      "name_ja": "分詞構文：独立分詞構文",
+      "pattern": "V-ing / p.p. / having p.p.",
+      "function_ja": "主語を明示",
+      "prompt_rule": "主語を明示ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「V-ing / p.p. / having p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g019",
+      "name_ja": "分詞構文：接続詞残し",
+      "pattern": "V-ing / p.p. / having p.p.",
+      "function_ja": "when/while + V-ing",
+      "prompt_rule": "when/while + V-ingことが自然に必要になる、短く実用的な文を作る。ターゲット構文「V-ing / p.p. / having p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g020",
+      "name_ja": "分詞構文：主語一致",
+      "pattern": "V-ing / p.p. / having p.p.",
+      "function_ja": "懸垂分詞を避ける",
+      "prompt_rule": "懸垂分詞を避けることが自然に必要になる、短く実用的な文を作る。ターゲット構文「V-ing / p.p. / having p.p.」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g021",
+      "name_ja": "関係詞高度：前置詞 + whom",
+      "pattern": "前置詞+関係詞 / what / whoever",
+      "function_ja": "to whom など",
+      "prompt_rule": "to whom などことが自然に必要になる、短く実用的な文を作る。ターゲット構文「前置詞+関係詞 / what / whoever」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g022",
+      "name_ja": "関係詞高度：前置詞 + which",
+      "pattern": "前置詞+関係詞 / what / whoever",
+      "function_ja": "in which など",
+      "prompt_rule": "in which などことが自然に必要になる、短く実用的な文を作る。ターゲット構文「前置詞+関係詞 / what / whoever」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g023",
+      "name_ja": "関係詞高度：what",
+      "pattern": "前置詞+関係詞 / what / whoever",
+      "function_ja": "the thing(s) that の意味",
+      "prompt_rule": "the thing(s) that の意味ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「前置詞+関係詞 / what / whoever」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g024",
+      "name_ja": "関係詞高度：whatever",
+      "pattern": "前置詞+関係詞 / what / whoever",
+      "function_ja": "何であれ",
+      "prompt_rule": "何であれことが自然に必要になる、短く実用的な文を作る。ターゲット構文「前置詞+関係詞 / what / whoever」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g025",
+      "name_ja": "関係詞高度：whoever",
+      "pattern": "前置詞+関係詞 / what / whoever",
+      "function_ja": "誰であれ",
+      "prompt_rule": "誰であれことが自然に必要になる、短く実用的な文を作る。ターゲット構文「前置詞+関係詞 / what / whoever」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g026",
+      "name_ja": "関係詞高度：whichever",
+      "pattern": "前置詞+関係詞 / what / whoever",
+      "function_ja": "どちらであれ",
+      "prompt_rule": "どちらであれことが自然に必要になる、短く実用的な文を作る。ターゲット構文「前置詞+関係詞 / what / whoever」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g027",
+      "name_ja": "関係詞高度：whose 高度",
+      "pattern": "前置詞+関係詞 / what / whoever",
+      "function_ja": "抽象名詞の所有",
+      "prompt_rule": "抽象名詞の所有ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「前置詞+関係詞 / what / whoever」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g028",
+      "name_ja": "関係詞高度：数量 + of whom",
+      "pattern": "前置詞+関係詞 / what / whoever",
+      "function_ja": "many of whom",
+      "prompt_rule": "many of whomことが自然に必要になる、短く実用的な文を作る。ターゲット構文「前置詞+関係詞 / what / whoever」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g029",
+      "name_ja": "関係詞高度：数量 + of which",
+      "pattern": "前置詞+関係詞 / what / whoever",
+      "function_ja": "some of which",
+      "prompt_rule": "some of whichことが自然に必要になる、短く実用的な文を作る。ターゲット構文「前置詞+関係詞 / what / whoever」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g030",
+      "name_ja": "関係詞高度：非制限と前置詞",
+      "pattern": "前置詞+関係詞 / what / whoever",
+      "function_ja": "補足情報をフォーマルに表す",
+      "prompt_rule": "補足情報をフォーマルに表すことが自然に必要になる、短く実用的な文を作る。ターゲット構文「前置詞+関係詞 / what / whoever」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g031",
+      "name_ja": "倒置基礎：Never",
+      "pattern": "否定語・Only・So/Neither",
+      "function_ja": "Never have I ...",
+      "prompt_rule": "Never have I ...ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「否定語・Only・So/Neither」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g032",
+      "name_ja": "倒置基礎：Rarely",
+      "pattern": "否定語・Only・So/Neither",
+      "function_ja": "Rarely do we ...",
+      "prompt_rule": "Rarely do we ...ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「否定語・Only・So/Neither」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g033",
+      "name_ja": "倒置基礎：Not only",
+      "pattern": "否定語・Only・So/Neither",
+      "function_ja": "Not only did ...",
+      "prompt_rule": "Not only did ...ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「否定語・Only・So/Neither」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g034",
+      "name_ja": "倒置基礎：Only then",
+      "pattern": "否定語・Only・So/Neither",
+      "function_ja": "Only then did ...",
+      "prompt_rule": "Only then did ...ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「否定語・Only・So/Neither」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g035",
+      "name_ja": "倒置基礎：Only after",
+      "pattern": "否定語・Only・So/Neither",
+      "function_ja": "Only after ... did ...",
+      "prompt_rule": "Only after ... did ...ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「否定語・Only・So/Neither」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g036",
+      "name_ja": "倒置基礎：Under no circumstances",
+      "pattern": "否定語・Only・So/Neither",
+      "function_ja": "強い否定で倒置",
+      "prompt_rule": "強い否定で倒置ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「否定語・Only・So/Neither」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g037",
+      "name_ja": "倒置基礎：So + 助動詞 + S",
+      "pattern": "否定語・Only・So/Neither",
+      "function_ja": "〜もそうだ",
+      "prompt_rule": "〜もそうだことが自然に必要になる、短く実用的な文を作る。ターゲット構文「否定語・Only・So/Neither」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g038",
+      "name_ja": "倒置基礎：Neither/Nor + 助動詞 + S",
+      "pattern": "否定語・Only・So/Neither",
+      "function_ja": "〜もそうでない",
+      "prompt_rule": "〜もそうでないことが自然に必要になる、短く実用的な文を作る。ターゲット構文「否定語・Only・So/Neither」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g039",
+      "name_ja": "倒置基礎：Little did S know",
+      "pattern": "否定語・Only・So/Neither",
+      "function_ja": "ほとんど知らなかった",
+      "prompt_rule": "ほとんど知らなかったことが自然に必要になる、短く実用的な文を作る。ターゲット構文「否定語・Only・So/Neither」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g040",
+      "name_ja": "倒置基礎：倒置の助動詞選択",
+      "pattern": "否定語・Only・So/Neither",
+      "function_ja": "時制に応じたdo/be/have",
+      "prompt_rule": "時制に応じたdo/be/haveことが自然に必要になる、短く実用的な文を作る。ターゲット構文「否定語・Only・So/Neither」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g041",
+      "name_ja": "強調・焦点：主語強調",
+      "pattern": "It is/was ... that / do強調",
+      "function_ja": "It was X that ...",
+      "prompt_rule": "It was X that ...ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「It is/was ... that / do強調」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g042",
+      "name_ja": "強調・焦点：目的語強調",
+      "pattern": "It is/was ... that / do強調",
+      "function_ja": "It was X that ...",
+      "prompt_rule": "It was X that ...ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「It is/was ... that / do強調」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g043",
+      "name_ja": "強調・焦点：時の強調",
+      "pattern": "It is/was ... that / do強調",
+      "function_ja": "It was yesterday that ...",
+      "prompt_rule": "It was yesterday that ...ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「It is/was ... that / do強調」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g044",
+      "name_ja": "強調・焦点：場所の強調",
+      "pattern": "It is/was ... that / do強調",
+      "function_ja": "It was there that ...",
+      "prompt_rule": "It was there that ...ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「It is/was ... that / do強調」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g045",
+      "name_ja": "強調・焦点：do強調",
+      "pattern": "It is/was ... that / do強調",
+      "function_ja": "I do agree.",
+      "prompt_rule": "I do agree.ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「It is/was ... that / do強調」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g046",
+      "name_ja": "強調・焦点：did強調",
+      "pattern": "It is/was ... that / do強調",
+      "function_ja": "I did call him.",
+      "prompt_rule": "I did call him.ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「It is/was ... that / do強調」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g047",
+      "name_ja": "強調・焦点：What節強調",
+      "pattern": "It is/was ... that / do強調",
+      "function_ja": "What I need is ...",
+      "prompt_rule": "What I need is ...ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「It is/was ... that / do強調」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g048",
+      "name_ja": "強調・焦点：All I need",
+      "pattern": "It is/was ... that / do強調",
+      "function_ja": "必要なものを焦点化",
+      "prompt_rule": "必要なものを焦点化ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「It is/was ... that / do強調」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g049",
+      "name_ja": "強調・焦点：the very",
+      "pattern": "It is/was ... that / do強調",
+      "function_ja": "まさにその",
+      "prompt_rule": "まさにそのことが自然に必要になる、短く実用的な文を作る。ターゲット構文「It is/was ... that / do強調」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g050",
+      "name_ja": "強調・焦点：not ... but ...",
+      "pattern": "It is/was ... that / do強調",
+      "function_ja": "対比による焦点化",
+      "prompt_rule": "対比による焦点化ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「It is/was ... that / do強調」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g051",
+      "name_ja": "名詞節高度：whether節主語",
+      "pattern": "whether/that/wh節・同格",
+      "function_ja": "Whether ... is ...",
+      "prompt_rule": "Whether ... is ...ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「whether/that/wh節・同格」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g052",
+      "name_ja": "名詞節高度：whether or not",
+      "pattern": "whether/that/wh節・同格",
+      "function_ja": "〜かどうかにかかわらず",
+      "prompt_rule": "〜かどうかにかかわらずことが自然に必要になる、短く実用的な文を作る。ターゲット構文「whether/that/wh節・同格」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g053",
+      "name_ja": "名詞節高度：that節主語",
+      "pattern": "whether/that/wh節・同格",
+      "function_ja": "The fact that ...",
+      "prompt_rule": "The fact that ...ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「whether/that/wh節・同格」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g054",
+      "name_ja": "名詞節高度：同格that",
+      "pattern": "whether/that/wh節・同格",
+      "function_ja": "the idea that ...",
+      "prompt_rule": "the idea that ...ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「whether/that/wh節・同格」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g055",
+      "name_ja": "名詞節高度：疑問詞 + to不定詞",
+      "pattern": "whether/that/wh節・同格",
+      "function_ja": "what to do",
+      "prompt_rule": "what to doことが自然に必要になる、短く実用的な文を作る。ターゲット構文「whether/that/wh節・同格」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g056",
+      "name_ja": "名詞節高度：whoever節",
+      "pattern": "whether/that/wh節・同格",
+      "function_ja": "誰であれ〜する人",
+      "prompt_rule": "誰であれ〜する人ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「whether/that/wh節・同格」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g057",
+      "name_ja": "名詞節高度：whatever節",
+      "pattern": "whether/that/wh節・同格",
+      "function_ja": "何であれ〜するもの",
+      "prompt_rule": "何であれ〜するものことが自然に必要になる、短く実用的な文を作る。ターゲット構文「whether/that/wh節・同格」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g058",
+      "name_ja": "名詞節高度：how節",
+      "pattern": "whether/that/wh節・同格",
+      "function_ja": "どのように〜するか",
+      "prompt_rule": "どのように〜するかことが自然に必要になる、短く実用的な文を作る。ターゲット構文「whether/that/wh節・同格」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g059",
+      "name_ja": "名詞節高度：why節",
+      "pattern": "whether/that/wh節・同格",
+      "function_ja": "なぜ〜なのか",
+      "prompt_rule": "なぜ〜なのかことが自然に必要になる、短く実用的な文を作る。ターゲット構文「whether/that/wh節・同格」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g060",
+      "name_ja": "名詞節高度：名詞節の語順",
+      "pattern": "whether/that/wh節・同格",
+      "function_ja": "平叙文語順",
+      "prompt_rule": "平叙文語順ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「whether/that/wh節・同格」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g061",
+      "name_ja": "受動態高度：現在完了受動",
+      "pattern": "完了・進行・二重目的語・知覚",
+      "function_ja": "has been p.p.",
+      "prompt_rule": "has been p.p.ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「完了・進行・二重目的語・知覚」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g062",
+      "name_ja": "受動態高度：過去完了受動",
+      "pattern": "完了・進行・二重目的語・知覚",
+      "function_ja": "had been p.p.",
+      "prompt_rule": "had been p.p.ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「完了・進行・二重目的語・知覚」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g063",
+      "name_ja": "受動態高度：進行受動",
+      "pattern": "完了・進行・二重目的語・知覚",
+      "function_ja": "is being p.p.",
+      "prompt_rule": "is being p.p.ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「完了・進行・二重目的語・知覚」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g064",
+      "name_ja": "受動態高度：未来受動",
+      "pattern": "完了・進行・二重目的語・知覚",
+      "function_ja": "will be p.p.",
+      "prompt_rule": "will be p.p.ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「完了・進行・二重目的語・知覚」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g065",
+      "name_ja": "受動態高度：助動詞完了受動",
+      "pattern": "完了・進行・二重目的語・知覚",
+      "function_ja": "should have been p.p.",
+      "prompt_rule": "should have been p.p.ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「完了・進行・二重目的語・知覚」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g066",
+      "name_ja": "受動態高度：SVOO受動",
+      "pattern": "完了・進行・二重目的語・知覚",
+      "function_ja": "He was given ...",
+      "prompt_rule": "He was given ...ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「完了・進行・二重目的語・知覚」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g067",
+      "name_ja": "受動態高度：目的語を主語化",
+      "pattern": "完了・進行・二重目的語・知覚",
+      "function_ja": "A book was given to him",
+      "prompt_rule": "A book was given to himことが自然に必要になる、短く実用的な文を作る。ターゲット構文「完了・進行・二重目的語・知覚」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g068",
+      "name_ja": "受動態高度：知覚受動",
+      "pattern": "完了・進行・二重目的語・知覚",
+      "function_ja": "was seen to do",
+      "prompt_rule": "was seen to doことが自然に必要になる、短く実用的な文を作る。ターゲット構文「完了・進行・二重目的語・知覚」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g069",
+      "name_ja": "受動態高度：使役受動",
+      "pattern": "完了・進行・二重目的語・知覚",
+      "function_ja": "was made to do",
+      "prompt_rule": "was made to doことが自然に必要になる、短く実用的な文を作る。ターゲット構文「完了・進行・二重目的語・知覚」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g070",
+      "name_ja": "受動態高度：by以外の前置詞",
+      "pattern": "完了・進行・二重目的語・知覚",
+      "function_ja": "be known for/to/as",
+      "prompt_rule": "be known for/to/asことが自然に必要になる、短く実用的な文を作る。ターゲット構文「完了・進行・二重目的語・知覚」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g071",
+      "name_ja": "動詞構文・補文：remember doing",
+      "pattern": "remember/stop/try/regret/mean",
+      "function_ja": "したことを覚えている",
+      "prompt_rule": "したことを覚えていることが自然に必要になる、短く実用的な文を作る。ターゲット構文「remember/stop/try/regret/mean」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g072",
+      "name_ja": "動詞構文・補文：remember to do",
+      "pattern": "remember/stop/try/regret/mean",
+      "function_ja": "忘れずにする",
+      "prompt_rule": "忘れずにすることが自然に必要になる、短く実用的な文を作る。ターゲット構文「remember/stop/try/regret/mean」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g073",
+      "name_ja": "動詞構文・補文：stop doing",
+      "pattern": "remember/stop/try/regret/mean",
+      "function_ja": "行為をやめる",
+      "prompt_rule": "行為をやめることが自然に必要になる、短く実用的な文を作る。ターゲット構文「remember/stop/try/regret/mean」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g074",
+      "name_ja": "動詞構文・補文：stop to do",
+      "pattern": "remember/stop/try/regret/mean",
+      "function_ja": "〜するため立ち止まる",
+      "prompt_rule": "〜するため立ち止まることが自然に必要になる、短く実用的な文を作る。ターゲット構文「remember/stop/try/regret/mean」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g075",
+      "name_ja": "動詞構文・補文：try doing",
+      "pattern": "remember/stop/try/regret/mean",
+      "function_ja": "試しにしてみる",
+      "prompt_rule": "試しにしてみることが自然に必要になる、短く実用的な文を作る。ターゲット構文「remember/stop/try/regret/mean」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g076",
+      "name_ja": "動詞構文・補文：try to do",
+      "pattern": "remember/stop/try/regret/mean",
+      "function_ja": "努力してする",
+      "prompt_rule": "努力してすることが自然に必要になる、短く実用的な文を作る。ターゲット構文「remember/stop/try/regret/mean」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g077",
+      "name_ja": "動詞構文・補文：regret doing",
+      "pattern": "remember/stop/try/regret/mean",
+      "function_ja": "したことを後悔",
+      "prompt_rule": "したことを後悔ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「remember/stop/try/regret/mean」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g078",
+      "name_ja": "動詞構文・補文：regret to say",
+      "pattern": "remember/stop/try/regret/mean",
+      "function_ja": "残念ながら言う",
+      "prompt_rule": "残念ながら言うことが自然に必要になる、短く実用的な文を作る。ターゲット構文「remember/stop/try/regret/mean」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g079",
+      "name_ja": "動詞構文・補文：mean doing",
+      "pattern": "remember/stop/try/regret/mean",
+      "function_ja": "〜することを意味する",
+      "prompt_rule": "〜することを意味することが自然に必要になる、短く実用的な文を作る。ターゲット構文「remember/stop/try/regret/mean」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g080",
+      "name_ja": "動詞構文・補文：mean to do",
+      "pattern": "remember/stop/try/regret/mean",
+      "function_ja": "〜するつもりである",
+      "prompt_rule": "〜するつもりであることが自然に必要になる、短く実用的な文を作る。ターゲット構文「remember/stop/try/regret/mean」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g081",
+      "name_ja": "譲歩・対比：although",
+      "pattern": "although/even though/despite/in spite of/whereas",
+      "function_ja": "節で譲歩",
+      "prompt_rule": "節で譲歩ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「although/even though/despite/in spite of/whereas」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g082",
+      "name_ja": "譲歩・対比：even though",
+      "pattern": "although/even though/despite/in spite of/whereas",
+      "function_ja": "強い譲歩",
+      "prompt_rule": "強い譲歩ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「although/even though/despite/in spite of/whereas」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g083",
+      "name_ja": "譲歩・対比：despite + 名詞",
+      "pattern": "although/even though/despite/in spite of/whereas",
+      "function_ja": "名詞句で譲歩",
+      "prompt_rule": "名詞句で譲歩ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「although/even though/despite/in spite of/whereas」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g084",
+      "name_ja": "譲歩・対比：despite + V-ing",
+      "pattern": "although/even though/despite/in spite of/whereas",
+      "function_ja": "動名詞で譲歩",
+      "prompt_rule": "動名詞で譲歩ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「although/even though/despite/in spite of/whereas」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g085",
+      "name_ja": "譲歩・対比：in spite of",
+      "pattern": "although/even though/despite/in spite of/whereas",
+      "function_ja": "〜にもかかわらず",
+      "prompt_rule": "〜にもかかわらずことが自然に必要になる、短く実用的な文を作る。ターゲット構文「although/even though/despite/in spite of/whereas」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g086",
+      "name_ja": "譲歩・対比：whereas",
+      "pattern": "although/even though/despite/in spite of/whereas",
+      "function_ja": "二つを対比",
+      "prompt_rule": "二つを対比ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「although/even though/despite/in spite of/whereas」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g087",
+      "name_ja": "譲歩・対比：while 対比",
+      "pattern": "although/even though/despite/in spite of/whereas",
+      "function_ja": "一方で",
+      "prompt_rule": "一方でことが自然に必要になる、短く実用的な文を作る。ターゲット構文「although/even though/despite/in spite of/whereas」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g088",
+      "name_ja": "譲歩・対比：however + 形容詞",
+      "pattern": "although/even though/despite/in spite of/whereas",
+      "function_ja": "どれほど〜でも",
+      "prompt_rule": "どれほど〜でもことが自然に必要になる、短く実用的な文を作る。ターゲット構文「although/even though/despite/in spite of/whereas」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g089",
+      "name_ja": "譲歩・対比：no matter how",
+      "pattern": "although/even though/despite/in spite of/whereas",
+      "function_ja": "どれほど〜でも",
+      "prompt_rule": "どれほど〜でもことが自然に必要になる、短く実用的な文を作る。ターゲット構文「although/even though/despite/in spite of/whereas」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g090",
+      "name_ja": "譲歩・対比：regardless of",
+      "pattern": "although/even though/despite/in spite of/whereas",
+      "function_ja": "〜に関係なく",
+      "prompt_rule": "〜に関係なくことが自然に必要になる、短く実用的な文を作る。ターゲット構文「although/even though/despite/in spite of/whereas」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g091",
+      "name_ja": "結果・程度・目的：so + 形容詞 + that",
+      "pattern": "so/such/too/enough/so that/in order that",
+      "function_ja": "とても〜なので",
+      "prompt_rule": "とても〜なのでことが自然に必要になる、短く実用的な文を作る。ターゲット構文「so/such/too/enough/so that/in order that」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g092",
+      "name_ja": "結果・程度・目的：such + 名詞 + that",
+      "pattern": "so/such/too/enough/so that/in order that",
+      "function_ja": "とても〜な…なので",
+      "prompt_rule": "とても〜な…なのでことが自然に必要になる、短く実用的な文を作る。ターゲット構文「so/such/too/enough/so that/in order that」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g093",
+      "name_ja": "結果・程度・目的：too ... to",
+      "pattern": "so/such/too/enough/so that/in order that",
+      "function_ja": "〜すぎてできない",
+      "prompt_rule": "〜すぎてできないことが自然に必要になる、短く実用的な文を作る。ターゲット構文「so/such/too/enough/so that/in order that」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g094",
+      "name_ja": "結果・程度・目的：enough to",
+      "pattern": "so/such/too/enough/so that/in order that",
+      "function_ja": "十分〜して",
+      "prompt_rule": "十分〜してことが自然に必要になる、短く実用的な文を作る。ターゲット構文「so/such/too/enough/so that/in order that」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g095",
+      "name_ja": "結果・程度・目的：so that can",
+      "pattern": "so/such/too/enough/so that/in order that",
+      "function_ja": "〜できるように",
+      "prompt_rule": "〜できるようにことが自然に必要になる、短く実用的な文を作る。ターゲット構文「so/such/too/enough/so that/in order that」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g096",
+      "name_ja": "結果・程度・目的：so that will",
+      "pattern": "so/such/too/enough/so that/in order that",
+      "function_ja": "〜するように",
+      "prompt_rule": "〜するようにことが自然に必要になる、短く実用的な文を作る。ターゲット構文「so/such/too/enough/so that/in order that」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g097",
+      "name_ja": "結果・程度・目的：in order that",
+      "pattern": "so/such/too/enough/so that/in order that",
+      "function_ja": "フォーマルな目的",
+      "prompt_rule": "フォーマルな目的ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「so/such/too/enough/so that/in order that」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g098",
+      "name_ja": "結果・程度・目的：for + 名詞 + to",
+      "pattern": "so/such/too/enough/so that/in order that",
+      "function_ja": "意味上の主語",
+      "prompt_rule": "意味上の主語ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「so/such/too/enough/so that/in order that」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g099",
+      "name_ja": "結果・程度・目的：so ... as to",
+      "pattern": "so/such/too/enough/so that/in order that",
+      "function_ja": "結果・程度のフォーマル表現",
+      "prompt_rule": "結果・程度のフォーマル表現ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「so/such/too/enough/so that/in order that」を明確に使わせる。"
+    },
+    {
+      "id": "b2-g100",
+      "name_ja": "結果・程度・目的：only to do",
+      "pattern": "so/such/too/enough/so that/in order that",
+      "function_ja": "結果として結局〜",
+      "prompt_rule": "結果として結局〜ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「so/such/too/enough/so that/in order that」を明確に使わせる。"
+    }
+  ],
+  "C1": [
+    {
+      "id": "c1-g001",
+      "name_ja": "高度な倒置：Had I known",
+      "pattern": "条件省略・否定表現・場所表現",
+      "function_ja": "if省略の過去完了",
+      "prompt_rule": "if省略の過去完了ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「条件省略・否定表現・場所表現」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g002",
+      "name_ja": "高度な倒置：Were I to",
+      "pattern": "条件省略・否定表現・場所表現",
+      "function_ja": "仮定法未来的な条件",
+      "prompt_rule": "仮定法未来的な条件ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「条件省略・否定表現・場所表現」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g003",
+      "name_ja": "高度な倒置：Should you need",
+      "pattern": "条件省略・否定表現・場所表現",
+      "function_ja": "丁寧な条件",
+      "prompt_rule": "丁寧な条件ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「条件省略・否定表現・場所表現」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g004",
+      "name_ja": "高度な倒置：No sooner ... than",
+      "pattern": "条件省略・否定表現・場所表現",
+      "function_ja": "〜するとすぐ",
+      "prompt_rule": "〜するとすぐことが自然に必要になる、短く実用的な文を作る。ターゲット構文「条件省略・否定表現・場所表現」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g005",
+      "name_ja": "高度な倒置：Hardly ... when",
+      "pattern": "条件省略・否定表現・場所表現",
+      "function_ja": "〜した途端",
+      "prompt_rule": "〜した途端ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「条件省略・否定表現・場所表現」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g006",
+      "name_ja": "高度な倒置：Scarcely ... when",
+      "pattern": "条件省略・否定表現・場所表現",
+      "function_ja": "〜するや否や",
+      "prompt_rule": "〜するや否やことが自然に必要になる、短く実用的な文を作る。ターゲット構文「条件省略・否定表現・場所表現」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g007",
+      "name_ja": "高度な倒置：Not until",
+      "pattern": "条件省略・否定表現・場所表現",
+      "function_ja": "〜して初めて",
+      "prompt_rule": "〜して初めてことが自然に必要になる、短く実用的な文を作る。ターゲット構文「条件省略・否定表現・場所表現」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g008",
+      "name_ja": "高度な倒置：On no account",
+      "pattern": "条件省略・否定表現・場所表現",
+      "function_ja": "決して〜ない",
+      "prompt_rule": "決して〜ないことが自然に必要になる、短く実用的な文を作る。ターゲット構文「条件省略・否定表現・場所表現」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g009",
+      "name_ja": "高度な倒置：Nowhere",
+      "pattern": "条件省略・否定表現・場所表現",
+      "function_ja": "どこにも〜ない",
+      "prompt_rule": "どこにも〜ないことが自然に必要になる、短く実用的な文を作る。ターゲット構文「条件省略・否定表現・場所表現」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g010",
+      "name_ja": "高度な倒置：場所句倒置",
+      "pattern": "条件省略・否定表現・場所表現",
+      "function_ja": "Here comes / On the hill stood ...",
+      "prompt_rule": "Here comes / On the hill stood ...ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「条件省略・否定表現・場所表現」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g011",
+      "name_ja": "仮定・願望高度：but for",
+      "pattern": "but for/otherwise/as if/would rather",
+      "function_ja": "〜がなければ",
+      "prompt_rule": "〜がなければことが自然に必要になる、短く実用的な文を作る。ターゲット構文「but for/otherwise/as if/would rather」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g012",
+      "name_ja": "仮定・願望高度：without",
+      "pattern": "but for/otherwise/as if/would rather",
+      "function_ja": "〜がなければ",
+      "prompt_rule": "〜がなければことが自然に必要になる、短く実用的な文を作る。ターゲット構文「but for/otherwise/as if/would rather」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g013",
+      "name_ja": "仮定・願望高度：otherwise",
+      "pattern": "but for/otherwise/as if/would rather",
+      "function_ja": "そうでなければ",
+      "prompt_rule": "そうでなければことが自然に必要になる、短く実用的な文を作る。ターゲット構文「but for/otherwise/as if/would rather」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g014",
+      "name_ja": "仮定・願望高度：as if + 過去",
+      "pattern": "but for/otherwise/as if/would rather",
+      "function_ja": "まるで今〜であるかのよう",
+      "prompt_rule": "まるで今〜であるかのようことが自然に必要になる、短く実用的な文を作る。ターゲット構文「but for/otherwise/as if/would rather」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g015",
+      "name_ja": "仮定・願望高度：as if + 過去完了",
+      "pattern": "but for/otherwise/as if/would rather",
+      "function_ja": "まるで過去に〜したかのよう",
+      "prompt_rule": "まるで過去に〜したかのようことが自然に必要になる、短く実用的な文を作る。ターゲット構文「but for/otherwise/as if/would rather」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g016",
+      "name_ja": "仮定・願望高度：would rather + S + 過去",
+      "pattern": "but for/otherwise/as if/would rather",
+      "function_ja": "人に〜してほしい",
+      "prompt_rule": "人に〜してほしいことが自然に必要になる、短く実用的な文を作る。ターゲット構文「but for/otherwise/as if/would rather」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g017",
+      "name_ja": "仮定・願望高度：would rather + have p.p.",
+      "pattern": "but for/otherwise/as if/would rather",
+      "function_ja": "過去に別選択を望む",
+      "prompt_rule": "過去に別選択を望むことが自然に必要になる、短く実用的な文を作る。ターゲット構文「but for/otherwise/as if/would rather」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g018",
+      "name_ja": "仮定・願望高度：wish + would",
+      "pattern": "but for/otherwise/as if/would rather",
+      "function_ja": "相手・状況の変化を望む",
+      "prompt_rule": "相手・状況の変化を望むことが自然に必要になる、短く実用的な文を作る。ターゲット構文「but for/otherwise/as if/would rather」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g019",
+      "name_ja": "仮定・願望高度：if it were not for",
+      "pattern": "but for/otherwise/as if/would rather",
+      "function_ja": "現在の支えがなければ",
+      "prompt_rule": "現在の支えがなければことが自然に必要になる、短く実用的な文を作る。ターゲット構文「but for/otherwise/as if/would rather」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g020",
+      "name_ja": "仮定・願望高度：if it had not been for",
+      "pattern": "but for/otherwise/as if/would rather",
+      "function_ja": "過去の支えがなければ",
+      "prompt_rule": "過去の支えがなければことが自然に必要になる、短く実用的な文を作る。ターゲット構文「but for/otherwise/as if/would rather」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g021",
+      "name_ja": "譲歩高度：much as",
+      "pattern": "much as / adjective as / whether ... or",
+      "function_ja": "〜ではあるが",
+      "prompt_rule": "〜ではあるがことが自然に必要になる、短く実用的な文を作る。ターゲット構文「much as / adjective as / whether ... or」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g022",
+      "name_ja": "譲歩高度：形容詞 + as + S + V",
+      "pattern": "much as / adjective as / whether ... or",
+      "function_ja": "〜ではあるが",
+      "prompt_rule": "〜ではあるがことが自然に必要になる、短く実用的な文を作る。ターゲット構文「much as / adjective as / whether ... or」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g023",
+      "name_ja": "譲歩高度：名詞 + as + S + V",
+      "pattern": "much as / adjective as / whether ... or",
+      "function_ja": "〜ではあるが",
+      "prompt_rule": "〜ではあるがことが自然に必要になる、短く実用的な文を作る。ターゲット構文「much as / adjective as / whether ... or」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g024",
+      "name_ja": "譲歩高度：whether ... or ...",
+      "pattern": "much as / adjective as / whether ... or",
+      "function_ja": "〜であろうとなかろうと",
+      "prompt_rule": "〜であろうとなかろうとことが自然に必要になる、短く実用的な文を作る。ターゲット構文「much as / adjective as / whether ... or」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g025",
+      "name_ja": "譲歩高度：come what may",
+      "pattern": "much as / adjective as / whether ... or",
+      "function_ja": "何が起ころうとも",
+      "prompt_rule": "何が起ころうともことが自然に必要になる、短く実用的な文を作る。ターゲット構文「much as / adjective as / whether ... or」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g026",
+      "name_ja": "譲歩高度：however + 副詞",
+      "pattern": "much as / adjective as / whether ... or",
+      "function_ja": "どんなに〜にしても",
+      "prompt_rule": "どんなに〜にしてもことが自然に必要になる、短く実用的な文を作る。ターゲット構文「much as / adjective as / whether ... or」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g027",
+      "name_ja": "譲歩高度：whatever the reason",
+      "pattern": "much as / adjective as / whether ... or",
+      "function_ja": "理由が何であれ",
+      "prompt_rule": "理由が何であれことが自然に必要になる、短く実用的な文を作る。ターゲット構文「much as / adjective as / whether ... or」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g028",
+      "name_ja": "譲歩高度：for all",
+      "pattern": "much as / adjective as / whether ... or",
+      "function_ja": "〜にもかかわらず",
+      "prompt_rule": "〜にもかかわらずことが自然に必要になる、短く実用的な文を作る。ターゲット構文「much as / adjective as / whether ... or」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g029",
+      "name_ja": "譲歩高度：notwithstanding",
+      "pattern": "much as / adjective as / whether ... or",
+      "function_ja": "〜にもかかわらず",
+      "prompt_rule": "〜にもかかわらずことが自然に必要になる、短く実用的な文を作る。ターゲット構文「much as / adjective as / whether ... or」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g030",
+      "name_ja": "譲歩高度：even if it means",
+      "pattern": "much as / adjective as / whether ... or",
+      "function_ja": "たとえ〜することになっても",
+      "prompt_rule": "たとえ〜することになってもことが自然に必要になる、短く実用的な文を作る。ターゲット構文「much as / adjective as / whether ... or」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g031",
+      "name_ja": "省略・代用：I think so",
+      "pattern": "so/not/do so/one/that/those/ellipsis",
+      "function_ja": "that節の代用",
+      "prompt_rule": "that節の代用ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「so/not/do so/one/that/those/ellipsis」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g032",
+      "name_ja": "省略・代用：I hope not",
+      "pattern": "so/not/do so/one/that/those/ellipsis",
+      "function_ja": "否定内容の代用",
+      "prompt_rule": "否定内容の代用ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「so/not/do so/one/that/those/ellipsis」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g033",
+      "name_ja": "省略・代用：do so",
+      "pattern": "so/not/do so/one/that/those/ellipsis",
+      "function_ja": "動詞句の代用",
+      "prompt_rule": "動詞句の代用ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「so/not/do so/one/that/those/ellipsis」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g034",
+      "name_ja": "省略・代用：one/ones",
+      "pattern": "so/not/do so/one/that/those/ellipsis",
+      "function_ja": "名詞の代用",
+      "prompt_rule": "名詞の代用ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「so/not/do so/one/that/those/ellipsis」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g035",
+      "name_ja": "省略・代用：that/those",
+      "pattern": "so/not/do so/one/that/those/ellipsis",
+      "function_ja": "比較で名詞を代用",
+      "prompt_rule": "比較で名詞を代用ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「so/not/do so/one/that/those/ellipsis」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g036",
+      "name_ja": "省略・代用：if necessary",
+      "pattern": "so/not/do so/one/that/those/ellipsis",
+      "function_ja": "主語+be省略",
+      "prompt_rule": "主語+be省略ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「so/not/do so/one/that/those/ellipsis」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g037",
+      "name_ja": "省略・代用：when possible",
+      "pattern": "so/not/do so/one/that/those/ellipsis",
+      "function_ja": "主語+be省略",
+      "prompt_rule": "主語+be省略ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「so/not/do so/one/that/those/ellipsis」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g038",
+      "name_ja": "省略・代用：than expected",
+      "pattern": "so/not/do so/one/that/those/ellipsis",
+      "function_ja": "比較節の省略",
+      "prompt_rule": "比較節の省略ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「so/not/do so/one/that/those/ellipsis」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g039",
+      "name_ja": "省略・代用：as usual",
+      "pattern": "so/not/do so/one/that/those/ellipsis",
+      "function_ja": "節の省略を含む定型",
+      "prompt_rule": "節の省略を含む定型ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「so/not/do so/one/that/those/ellipsis」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g040",
+      "name_ja": "省略・代用：stripping",
+      "pattern": "so/not/do so/one/that/those/ellipsis",
+      "function_ja": "and/but後の反復要素省略",
+      "prompt_rule": "and/but後の反復要素省略ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「so/not/do so/one/that/those/ellipsis」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g041",
+      "name_ja": "名詞化・フォーマル構文：decision to do",
+      "pattern": "名詞化 / with構文 / apposition",
+      "function_ja": "動詞を名詞化",
+      "prompt_rule": "動詞を名詞化ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「名詞化 / with構文 / apposition」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g042",
+      "name_ja": "名詞化・フォーマル構文：failure to do",
+      "pattern": "名詞化 / with構文 / apposition",
+      "function_ja": "否定的結果の名詞化",
+      "prompt_rule": "否定的結果の名詞化ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「名詞化 / with構文 / apposition」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g043",
+      "name_ja": "名詞化・フォーマル構文：the fact that",
+      "pattern": "名詞化 / with構文 / apposition",
+      "function_ja": "事実を名詞化",
+      "prompt_rule": "事実を名詞化ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「名詞化 / with構文 / apposition」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g044",
+      "name_ja": "名詞化・フォーマル構文：with + O + C",
+      "pattern": "名詞化 / with構文 / apposition",
+      "function_ja": "付帯状況",
+      "prompt_rule": "付帯状況ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「名詞化 / with構文 / apposition」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g045",
+      "name_ja": "名詞化・フォーマル構文：with + O + V-ing",
+      "pattern": "名詞化 / with構文 / apposition",
+      "function_ja": "能動の付帯状況",
+      "prompt_rule": "能動の付帯状況ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「名詞化 / with構文 / apposition」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g046",
+      "name_ja": "名詞化・フォーマル構文：with + O + p.p.",
+      "pattern": "名詞化 / with構文 / apposition",
+      "function_ja": "受動の付帯状況",
+      "prompt_rule": "受動の付帯状況ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「名詞化 / with構文 / apposition」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g047",
+      "name_ja": "名詞化・フォーマル構文：同格名詞句",
+      "pattern": "名詞化 / with構文 / apposition",
+      "function_ja": "説明を同格で追加",
+      "prompt_rule": "説明を同格で追加ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「名詞化 / with構文 / apposition」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g048",
+      "name_ja": "名詞化・フォーマル構文：there being",
+      "pattern": "名詞化 / with構文 / apposition",
+      "function_ja": "there構文の動名詞化",
+      "prompt_rule": "there構文の動名詞化ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「名詞化 / with構文 / apposition」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g049",
+      "name_ja": "名詞化・フォーマル構文：for there to be",
+      "pattern": "名詞化 / with構文 / apposition",
+      "function_ja": "there構文の不定詞化",
+      "prompt_rule": "there構文の不定詞化ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「名詞化 / with構文 / apposition」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g050",
+      "name_ja": "名詞化・フォーマル構文：名詞中心文体",
+      "pattern": "名詞化 / with構文 / apposition",
+      "function_ja": "動作より概念を前面に出す",
+      "prompt_rule": "動作より概念を前面に出すことが自然に必要になる、短く実用的な文を作る。ターゲット構文「名詞化 / with構文 / apposition」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g051",
+      "name_ja": "前置詞＋関係詞高度：by which",
+      "pattern": "by/through/with/under + which/whom",
+      "function_ja": "手段を表す",
+      "prompt_rule": "手段を表すことが自然に必要になる、短く実用的な文を作る。ターゲット構文「by/through/with/under + which/whom」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g052",
+      "name_ja": "前置詞＋関係詞高度：through which",
+      "pattern": "by/through/with/under + which/whom",
+      "function_ja": "経路・手段",
+      "prompt_rule": "経路・手段ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「by/through/with/under + which/whom」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g053",
+      "name_ja": "前置詞＋関係詞高度：with whom",
+      "pattern": "by/through/with/under + which/whom",
+      "function_ja": "共同・関係",
+      "prompt_rule": "共同・関係ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「by/through/with/under + which/whom」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g054",
+      "name_ja": "前置詞＋関係詞高度：for whom",
+      "pattern": "by/through/with/under + which/whom",
+      "function_ja": "対象・利益",
+      "prompt_rule": "対象・利益ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「by/through/with/under + which/whom」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g055",
+      "name_ja": "前置詞＋関係詞高度：under which",
+      "pattern": "by/through/with/under + which/whom",
+      "function_ja": "条件・制度",
+      "prompt_rule": "条件・制度ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「by/through/with/under + which/whom」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g056",
+      "name_ja": "前置詞＋関係詞高度：in whose",
+      "pattern": "by/through/with/under + which/whom",
+      "function_ja": "所有 + 前置詞",
+      "prompt_rule": "所有 + 前置詞ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「by/through/with/under + which/whom」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g057",
+      "name_ja": "前置詞＋関係詞高度：at which point",
+      "pattern": "by/through/with/under + which/whom",
+      "function_ja": "その時点で",
+      "prompt_rule": "その時点でことが自然に必要になる、短く実用的な文を作る。ターゲット構文「by/through/with/under + which/whom」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g058",
+      "name_ja": "前置詞＋関係詞高度：in which case",
+      "pattern": "by/through/with/under + which/whom",
+      "function_ja": "その場合",
+      "prompt_rule": "その場合ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「by/through/with/under + which/whom」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g059",
+      "name_ja": "前置詞＋関係詞高度：to which extent",
+      "pattern": "by/through/with/under + which/whom",
+      "function_ja": "程度を示す",
+      "prompt_rule": "程度を示すことが自然に必要になる、短く実用的な文を作る。ターゲット構文「by/through/with/under + which/whom」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g060",
+      "name_ja": "前置詞＋関係詞高度：from which",
+      "pattern": "by/through/with/under + which/whom",
+      "function_ja": "起点・由来",
+      "prompt_rule": "起点・由来ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「by/through/with/under + which/whom」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g061",
+      "name_ja": "法助動詞・推量高度：ought to have",
+      "pattern": "need/dare/ought to/would/should",
+      "function_ja": "過去の義務・期待",
+      "prompt_rule": "過去の義務・期待ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「need/dare/ought to/would/should」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g062",
+      "name_ja": "法助動詞・推量高度：needn't have",
+      "pattern": "need/dare/ought to/would/should",
+      "function_ja": "不要だったが実行",
+      "prompt_rule": "不要だったが実行ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「need/dare/ought to/would/should」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g063",
+      "name_ja": "法助動詞・推量高度：didn't need to",
+      "pattern": "need/dare/ought to/would/should",
+      "function_ja": "不要で実行しなかった可能性",
+      "prompt_rule": "不要で実行しなかった可能性ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「need/dare/ought to/would/should」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g064",
+      "name_ja": "法助動詞・推量高度：dare not",
+      "pattern": "need/dare/ought to/would/should",
+      "function_ja": "あえて〜しない",
+      "prompt_rule": "あえて〜しないことが自然に必要になる、短く実用的な文を作る。ターゲット構文「need/dare/ought to/would/should」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g065",
+      "name_ja": "法助動詞・推量高度：would 過去の習慣",
+      "pattern": "need/dare/ought to/would/should",
+      "function_ja": "昔よく〜した",
+      "prompt_rule": "昔よく〜したことが自然に必要になる、短く実用的な文を作る。ターゲット構文「need/dare/ought to/would/should」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g066",
+      "name_ja": "法助動詞・推量高度：would 推量",
+      "pattern": "need/dare/ought to/would/should",
+      "function_ja": "控えめな推測",
+      "prompt_rule": "控えめな推測ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「need/dare/ought to/would/should」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g067",
+      "name_ja": "法助動詞・推量高度：should 驚き",
+      "pattern": "need/dare/ought to/would/should",
+      "function_ja": "Why should ...?",
+      "prompt_rule": "Why should ...?ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「need/dare/ought to/would/should」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g068",
+      "name_ja": "法助動詞・推量高度：should 提案節",
+      "pattern": "need/dare/ought to/would/should",
+      "function_ja": "It is essential that S should ...",
+      "prompt_rule": "It is essential that S should ...ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「need/dare/ought to/would/should」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g069",
+      "name_ja": "法助動詞・推量高度：may well",
+      "pattern": "need/dare/ought to/would/should",
+      "function_ja": "〜するのももっともだ",
+      "prompt_rule": "〜するのももっともだことが自然に必要になる、短く実用的な文を作る。ターゲット構文「need/dare/ought to/would/should」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g070",
+      "name_ja": "法助動詞・推量高度：might as well",
+      "pattern": "need/dare/ought to/would/should",
+      "function_ja": "〜した方がまし",
+      "prompt_rule": "〜した方がましことが自然に必要になる、短く実用的な文を作る。ターゲット構文「need/dare/ought to/would/should」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g071",
+      "name_ja": "談話接続・情報構造：given that",
+      "pattern": "given that/provided that/insofar as/whereby",
+      "function_ja": "〜を考えると",
+      "prompt_rule": "〜を考えるとことが自然に必要になる、短く実用的な文を作る。ターゲット構文「given that/provided that/insofar as/whereby」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g072",
+      "name_ja": "談話接続・情報構造：provided that",
+      "pattern": "given that/provided that/insofar as/whereby",
+      "function_ja": "〜という条件で",
+      "prompt_rule": "〜という条件でことが自然に必要になる、短く実用的な文を作る。ターゲット構文「given that/provided that/insofar as/whereby」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g073",
+      "name_ja": "談話接続・情報構造：assuming that",
+      "pattern": "given that/provided that/insofar as/whereby",
+      "function_ja": "〜と仮定すると",
+      "prompt_rule": "〜と仮定するとことが自然に必要になる、短く実用的な文を作る。ターゲット構文「given that/provided that/insofar as/whereby」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g074",
+      "name_ja": "談話接続・情報構造：insofar as",
+      "pattern": "given that/provided that/insofar as/whereby",
+      "function_ja": "〜する限りにおいて",
+      "prompt_rule": "〜する限りにおいてことが自然に必要になる、短く実用的な文を作る。ターゲット構文「given that/provided that/insofar as/whereby」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g075",
+      "name_ja": "談話接続・情報構造：whereby",
+      "pattern": "given that/provided that/insofar as/whereby",
+      "function_ja": "それによって",
+      "prompt_rule": "それによってことが自然に必要になる、短く実用的な文を作る。ターゲット構文「given that/provided that/insofar as/whereby」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g076",
+      "name_ja": "談話接続・情報構造：wherein",
+      "pattern": "given that/provided that/insofar as/whereby",
+      "function_ja": "その中で/その点で",
+      "prompt_rule": "その中で/その点でことが自然に必要になる、短く実用的な文を作る。ターゲット構文「given that/provided that/insofar as/whereby」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g077",
+      "name_ja": "談話接続・情報構造：hence",
+      "pattern": "given that/provided that/insofar as/whereby",
+      "function_ja": "それゆえ",
+      "prompt_rule": "それゆえことが自然に必要になる、短く実用的な文を作る。ターゲット構文「given that/provided that/insofar as/whereby」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g078",
+      "name_ja": "談話接続・情報構造：thereby",
+      "pattern": "given that/provided that/insofar as/whereby",
+      "function_ja": "それによって",
+      "prompt_rule": "それによってことが自然に必要になる、短く実用的な文を作る。ターゲット構文「given that/provided that/insofar as/whereby」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g079",
+      "name_ja": "談話接続・情報構造：nevertheless",
+      "pattern": "given that/provided that/insofar as/whereby",
+      "function_ja": "それにもかかわらず",
+      "prompt_rule": "それにもかかわらずことが自然に必要になる、短く実用的な文を作る。ターゲット構文「given that/provided that/insofar as/whereby」を明確に使わせる。"
+    },
+    {
+      "id": "c1-g080",
+      "name_ja": "談話接続・情報構造：consequently",
+      "pattern": "given that/provided that/insofar as/whereby",
+      "function_ja": "その結果",
+      "prompt_rule": "その結果ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「given that/provided that/insofar as/whereby」を明確に使わせる。"
+    }
+  ],
+  "C2": [
+    {
+      "id": "c2-g001",
+      "name_ja": "高度な省略・圧縮：if any",
+      "pattern": "verbless clause / reduced clause / nominal style",
+      "function_ja": "あるとしても",
+      "prompt_rule": "あるとしてもことが自然に必要になる、短く実用的な文を作る。ターゲット構文「verbless clause / reduced clause / nominal style」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g002",
+      "name_ja": "高度な省略・圧縮：if anything",
+      "pattern": "verbless clause / reduced clause / nominal style",
+      "function_ja": "どちらかといえば",
+      "prompt_rule": "どちらかといえばことが自然に必要になる、短く実用的な文を作る。ターゲット構文「verbless clause / reduced clause / nominal style」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g003",
+      "name_ja": "高度な省略・圧縮：if ever",
+      "pattern": "verbless clause / reduced clause / nominal style",
+      "function_ja": "あるとしても",
+      "prompt_rule": "あるとしてもことが自然に必要になる、短く実用的な文を作る。ターゲット構文「verbless clause / reduced clause / nominal style」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g004",
+      "name_ja": "高度な省略・圧縮：when in doubt",
+      "pattern": "verbless clause / reduced clause / nominal style",
+      "function_ja": "主語・be省略",
+      "prompt_rule": "主語・be省略ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「verbless clause / reduced clause / nominal style」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g005",
+      "name_ja": "高度な省略・圧縮：where appropriate",
+      "pattern": "verbless clause / reduced clause / nominal style",
+      "function_ja": "主語・be省略",
+      "prompt_rule": "主語・be省略ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「verbless clause / reduced clause / nominal style」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g006",
+      "name_ja": "高度な省略・圧縮：all things considered",
+      "pattern": "verbless clause / reduced clause / nominal style",
+      "function_ja": "独立分詞句",
+      "prompt_rule": "独立分詞句ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「verbless clause / reduced clause / nominal style」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g007",
+      "name_ja": "高度な省略・圧縮：weather permitting",
+      "pattern": "verbless clause / reduced clause / nominal style",
+      "function_ja": "独立分詞構文",
+      "prompt_rule": "独立分詞構文ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「verbless clause / reduced clause / nominal style」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g008",
+      "name_ja": "高度な省略・圧縮：that said",
+      "pattern": "verbless clause / reduced clause / nominal style",
+      "function_ja": "前文を受ける独立表現",
+      "prompt_rule": "前文を受ける独立表現ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「verbless clause / reduced clause / nominal style」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g009",
+      "name_ja": "高度な省略・圧縮：given the circumstances",
+      "pattern": "verbless clause / reduced clause / nominal style",
+      "function_ja": "節を名詞句へ圧縮",
+      "prompt_rule": "節を名詞句へ圧縮ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「verbless clause / reduced clause / nominal style」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g010",
+      "name_ja": "高度な省略・圧縮：名詞化による高密度文",
+      "pattern": "verbless clause / reduced clause / nominal style",
+      "function_ja": "複数動作を名詞中心で圧縮",
+      "prompt_rule": "複数動作を名詞中心で圧縮ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「verbless clause / reduced clause / nominal style」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g011",
+      "name_ja": "修辞的倒置・強調：What ... is ...",
+      "pattern": "cleft / pseudo-cleft / fronting / inversion",
+      "function_ja": "擬似分裂文",
+      "prompt_rule": "擬似分裂文ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「cleft / pseudo-cleft / fronting / inversion」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g012",
+      "name_ja": "修辞的倒置・強調：What ... does is ...",
+      "pattern": "cleft / pseudo-cleft / fronting / inversion",
+      "function_ja": "行為を焦点化",
+      "prompt_rule": "行為を焦点化ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「cleft / pseudo-cleft / fronting / inversion」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g013",
+      "name_ja": "修辞的倒置・強調：It is not until ... that",
+      "pattern": "cleft / pseudo-cleft / fronting / inversion",
+      "function_ja": "時点を強調",
+      "prompt_rule": "時点を強調ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「cleft / pseudo-cleft / fronting / inversion」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g014",
+      "name_ja": "修辞的倒置・強調：So + adj + be + S",
+      "pattern": "cleft / pseudo-cleft / fronting / inversion",
+      "function_ja": "形容詞を前置した倒置",
+      "prompt_rule": "形容詞を前置した倒置ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「cleft / pseudo-cleft / fronting / inversion」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g015",
+      "name_ja": "修辞的倒置・強調：Such + be + S",
+      "pattern": "cleft / pseudo-cleft / fronting / inversion",
+      "function_ja": "suchを前置した倒置",
+      "prompt_rule": "suchを前置した倒置ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「cleft / pseudo-cleft / fronting / inversion」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g016",
+      "name_ja": "修辞的倒置・強調：Gone are the days",
+      "pattern": "cleft / pseudo-cleft / fronting / inversion",
+      "function_ja": "補語前置",
+      "prompt_rule": "補語前置ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「cleft / pseudo-cleft / fronting / inversion」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g017",
+      "name_ja": "修辞的倒置・強調：At no point",
+      "pattern": "cleft / pseudo-cleft / fronting / inversion",
+      "function_ja": "否定語句前置",
+      "prompt_rule": "否定語句前置ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「cleft / pseudo-cleft / fronting / inversion」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g018",
+      "name_ja": "修辞的倒置・強調：Only by doing",
+      "pattern": "cleft / pseudo-cleft / fronting / inversion",
+      "function_ja": "手段を強調して倒置",
+      "prompt_rule": "手段を強調して倒置ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「cleft / pseudo-cleft / fronting / inversion」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g019",
+      "name_ja": "修辞的倒置・強調：Not for a moment",
+      "pattern": "cleft / pseudo-cleft / fronting / inversion",
+      "function_ja": "一瞬たりとも",
+      "prompt_rule": "一瞬たりともことが自然に必要になる、短く実用的な文を作る。ターゲット構文「cleft / pseudo-cleft / fronting / inversion」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g020",
+      "name_ja": "修辞的倒置・強調：fronted object",
+      "pattern": "cleft / pseudo-cleft / fronting / inversion",
+      "function_ja": "目的語前置による談話焦点",
+      "prompt_rule": "目的語前置による談話焦点ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「cleft / pseudo-cleft / fronting / inversion」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g021",
+      "name_ja": "複雑な従属・埋め込み：It seems that",
+      "pattern": "nested clauses / extraposition / raising",
+      "function_ja": "外置・非人称表現",
+      "prompt_rule": "外置・非人称表現ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「nested clauses / extraposition / raising」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g022",
+      "name_ja": "複雑な従属・埋め込み：S seems to have p.p.",
+      "pattern": "nested clauses / extraposition / raising",
+      "function_ja": "raising + 完了不定詞",
+      "prompt_rule": "raising + 完了不定詞ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「nested clauses / extraposition / raising」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g023",
+      "name_ja": "複雑な従属・埋め込み：It is believed that",
+      "pattern": "nested clauses / extraposition / raising",
+      "function_ja": "非人称受動",
+      "prompt_rule": "非人称受動ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「nested clauses / extraposition / raising」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g024",
+      "name_ja": "複雑な従属・埋め込み：S is believed to",
+      "pattern": "nested clauses / extraposition / raising",
+      "function_ja": "raising型受動",
+      "prompt_rule": "raising型受動ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「nested clauses / extraposition / raising」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g025",
+      "name_ja": "複雑な従属・埋め込み：what appears to be",
+      "pattern": "nested clauses / extraposition / raising",
+      "function_ja": "埋め込みを伴う名詞節",
+      "prompt_rule": "埋め込みを伴う名詞節ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「nested clauses / extraposition / raising」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g026",
+      "name_ja": "複雑な従属・埋め込み：the extent to which",
+      "pattern": "nested clauses / extraposition / raising",
+      "function_ja": "程度を関係節化",
+      "prompt_rule": "程度を関係節化ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「nested clauses / extraposition / raising」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g027",
+      "name_ja": "複雑な従属・埋め込み：the assumption on which",
+      "pattern": "nested clauses / extraposition / raising",
+      "function_ja": "抽象名詞＋前置詞関係詞",
+      "prompt_rule": "抽象名詞＋前置詞関係詞ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「nested clauses / extraposition / raising」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g028",
+      "name_ja": "複雑な従属・埋め込み：what with A and B",
+      "pattern": "nested clauses / extraposition / raising",
+      "function_ja": "複合的理由",
+      "prompt_rule": "複合的理由ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「nested clauses / extraposition / raising」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g029",
+      "name_ja": "複雑な従属・埋め込み：not so much A as B",
+      "pattern": "nested clauses / extraposition / raising",
+      "function_ja": "AというよりB",
+      "prompt_rule": "AというよりBことが自然に必要になる、短く実用的な文を作る。ターゲット構文「nested clauses / extraposition / raising」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g030",
+      "name_ja": "複雑な従属・埋め込み：the more ..., the more ...",
+      "pattern": "nested clauses / extraposition / raising",
+      "function_ja": "相関比較",
+      "prompt_rule": "相関比較ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「nested clauses / extraposition / raising」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g031",
+      "name_ja": "文体・レジスター：It would appear that",
+      "pattern": "formal hedging / stance / concession",
+      "function_ja": "控えめな判断",
+      "prompt_rule": "控えめな判断ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「formal hedging / stance / concession」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g032",
+      "name_ja": "文体・レジスター：There is reason to believe",
+      "pattern": "formal hedging / stance / concession",
+      "function_ja": "断定回避",
+      "prompt_rule": "断定回避ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「formal hedging / stance / concession」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g033",
+      "name_ja": "文体・レジスター：It is not unreasonable to",
+      "pattern": "formal hedging / stance / concession",
+      "function_ja": "二重否定的ヘッジ",
+      "prompt_rule": "二重否定的ヘッジことが自然に必要になる、短く実用的な文を作る。ターゲット構文「formal hedging / stance / concession」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g034",
+      "name_ja": "文体・レジスター：To the extent that",
+      "pattern": "formal hedging / stance / concession",
+      "function_ja": "限定的に述べる",
+      "prompt_rule": "限定的に述べることが自然に必要になる、短く実用的な文を作る。ターゲット構文「formal hedging / stance / concession」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g035",
+      "name_ja": "文体・レジスター：Be that as it may",
+      "pattern": "formal hedging / stance / concession",
+      "function_ja": "譲歩して話題転換",
+      "prompt_rule": "譲歩して話題転換ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「formal hedging / stance / concession」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g036",
+      "name_ja": "文体・レジスター：Suffice it to say",
+      "pattern": "formal hedging / stance / concession",
+      "function_ja": "要点のみ述べる",
+      "prompt_rule": "要点のみ述べることが自然に必要になる、短く実用的な文を作る。ターゲット構文「formal hedging / stance / concession」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g037",
+      "name_ja": "文体・レジスター：Needless to say",
+      "pattern": "formal hedging / stance / concession",
+      "function_ja": "言うまでもなく",
+      "prompt_rule": "言うまでもなくことが自然に必要になる、短く実用的な文を作る。ターゲット構文「formal hedging / stance / concession」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g038",
+      "name_ja": "文体・レジスター：Far be it from me to",
+      "pattern": "formal hedging / stance / concession",
+      "function_ja": "強い否定的立場",
+      "prompt_rule": "強い否定的立場ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「formal hedging / stance / concession」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g039",
+      "name_ja": "文体・レジスター：Not least because",
+      "pattern": "formal hedging / stance / concession",
+      "function_ja": "特に〜という理由で",
+      "prompt_rule": "特に〜という理由でことが自然に必要になる、短く実用的な文を作る。ターゲット構文「formal hedging / stance / concession」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g040",
+      "name_ja": "文体・レジスター：For want of a better word",
+      "pattern": "formal hedging / stance / concession",
+      "function_ja": "適切な語がないので",
+      "prompt_rule": "適切な語がないのでことが自然に必要になる、短く実用的な文を作る。ターゲット構文「formal hedging / stance / concession」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g041",
+      "name_ja": "意味の微差構文：was to have p.p.",
+      "pattern": "aspect / modality / counterfactual nuance",
+      "function_ja": "実現しなかった予定",
+      "prompt_rule": "実現しなかった予定ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「aspect / modality / counterfactual nuance」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g042",
+      "name_ja": "意味の微差構文：was supposed to have p.p.",
+      "pattern": "aspect / modality / counterfactual nuance",
+      "function_ja": "過去の期待と不履行",
+      "prompt_rule": "過去の期待と不履行ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「aspect / modality / counterfactual nuance」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g043",
+      "name_ja": "意味の微差構文：would have been V-ing",
+      "pattern": "aspect / modality / counterfactual nuance",
+      "function_ja": "仮定的な過去進行",
+      "prompt_rule": "仮定的な過去進行ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「aspect / modality / counterfactual nuance」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g044",
+      "name_ja": "意味の微差構文：might well have p.p.",
+      "pattern": "aspect / modality / counterfactual nuance",
+      "function_ja": "十分あり得た過去",
+      "prompt_rule": "十分あり得た過去ことが自然に必要になる、短く実用的な文を作る。ターゲット構文「aspect / modality / counterfactual nuance」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g045",
+      "name_ja": "意味の微差構文：cannot but do",
+      "pattern": "aspect / modality / counterfactual nuance",
+      "function_ja": "〜せざるを得ない",
+      "prompt_rule": "〜せざるを得ないことが自然に必要になる、短く実用的な文を作る。ターゲット構文「aspect / modality / counterfactual nuance」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g046",
+      "name_ja": "意味の微差構文：cannot help but do",
+      "pattern": "aspect / modality / counterfactual nuance",
+      "function_ja": "〜せずにはいられない",
+      "prompt_rule": "〜せずにはいられないことが自然に必要になる、短く実用的な文を作る。ターゲット構文「aspect / modality / counterfactual nuance」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g047",
+      "name_ja": "意味の微差構文：have yet to do",
+      "pattern": "aspect / modality / counterfactual nuance",
+      "function_ja": "まだ〜していない",
+      "prompt_rule": "まだ〜していないことが自然に必要になる、短く実用的な文を作る。ターゲット構文「aspect / modality / counterfactual nuance」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g048",
+      "name_ja": "意味の微差構文：be yet to do",
+      "pattern": "aspect / modality / counterfactual nuance",
+      "function_ja": "今後〜することになっている",
+      "prompt_rule": "今後〜することになっていることが自然に必要になる、短く実用的な文を作る。ターゲット構文「aspect / modality / counterfactual nuance」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g049",
+      "name_ja": "意味の微差構文：not until later did",
+      "pattern": "aspect / modality / counterfactual nuance",
+      "function_ja": "後になって初めて",
+      "prompt_rule": "後になって初めてことが自然に必要になる、短く実用的な文を作る。ターゲット構文「aspect / modality / counterfactual nuance」を明確に使わせる。"
+    },
+    {
+      "id": "c2-g050",
+      "name_ja": "意味の微差構文：would sooner ... than ...",
+      "pattern": "aspect / modality / counterfactual nuance",
+      "function_ja": "むしろ〜したい",
+      "prompt_rule": "むしろ〜したいことが自然に必要になる、短く実用的な文を作る。ターゲット構文「aspect / modality / counterfactual nuance」を明確に使わせる。"
+    }
+  ]
+};
+
 app.post("/api/writing", requireKey, async(req,res)=>{
   try{
     const level = String(req.body.level || "B1");
     const topic = String(req.body.topic || "Daily conversation");
     const count = Math.max(3, Math.min(10, Number(req.body.count) || 5));
     const mode = req.body.mode === "en-ja" ? "en-ja" : "ja-en";
+    const recentGrammarIds = Array.isArray(req.body.recentGrammarIds)
+      ? req.body.recentGrammarIds.map(x=>String(x||"").trim()).filter(Boolean).slice(-500)
+      : [];
+
+    const pool = Array.isArray(WRITING_GRAMMAR_POOLS[level])
+      ? WRITING_GRAMMAR_POOLS[level]
+      : WRITING_GRAMMAR_POOLS.B1;
+
+    const seenSet = new Set(recentGrammarIds);
+    const cooldownSet = new Set(recentGrammarIds.slice(-30));
+
+    // Vocabularyと同じ考え方で、まず未出題文法を優先。
+    let candidates = pool.filter(g=>!seenSet.has(g.id));
+    if(candidates.length < count){
+      // 一巡後のみ再利用。ただし直近30項目は避ける。
+      candidates = [
+        ...candidates,
+        ...pool.filter(g=>seenSet.has(g.id) && !cooldownSet.has(g.id))
+      ];
+    }
+
+    // シャッフルして今回のターゲット文法を決定
+    for(let i=candidates.length-1;i>0;i--){
+      const j=Math.floor(Math.random()*(i+1));
+      [candidates[i],candidates[j]]=[candidates[j],candidates[i]];
+    }
+    const targets=candidates.slice(0,count);
+    if(targets.length<count){
+      throw new Error(`利用できる文法プールが不足しています。${targets.length}/${count}項目`);
+    }
 
     const directionRule = mode === "ja-en"
-      ? `Create Japanese-to-English translation exercises.
-- source_text must be a short, natural JAPANESE sentence.
-- reference_answer must be ONE natural ENGLISH translation at CEFR ${level}.
-- explanation_ja should briefly explain useful English grammar/vocabulary.`
-      : `Create English-to-Japanese translation exercises.
-- source_text must be a short, natural ENGLISH sentence at CEFR ${level}.
-- reference_answer must be ONE natural JAPANESE translation.
-- explanation_ja should briefly explain the English expression/grammar and how it maps into Japanese.`;
+      ? `Create JAPANESE source sentences that the learner translates into English.
+The reference English answer MUST naturally use the assigned grammar target.`
+      : `Create ENGLISH source sentences that the learner translates into Japanese.
+The English source itself MUST naturally use the assigned grammar target.`;
 
-    const prompt = `Create ${count} translation exercises for a Japanese learner.
+    const targetText=targets.map((g,i)=>`
+${i+1}. grammar_id: ${g.id}
+   name_ja: ${g.name_ja}
+   pattern: ${g.pattern}
+   function_ja: ${g.function_ja}
+   prompt_rule: ${g.prompt_rule}`).join("\n");
+
+    const prompt=`Create exactly ${count} translation exercises for a Japanese learner.
 CEFR level: ${level}
 Topic: ${topic}
 Direction: ${mode}
 
+The server has ALREADY selected the grammar targets.
+Do NOT replace, merge, skip, or reorder them.
+Create exactly ONE exercise for EACH target, in the SAME ORDER.
+
+GRAMMAR TARGETS:
+${targetText}
+
 ${directionRule}
 
 Requirements:
-- Keep each source sentence short and practical.
-- Prefer everyday/practical communication rather than literary language.
-- Keep each item focused on one main sentence pattern or meaning unit.
-- Make the questions meaningfully different from each other.
+- The target grammar must be meaningfully necessary or strongly natural for the sentence, not merely incidental.
+- Keep the sentence short, practical, and CEFR ${level}-appropriate.
+- Avoid literary or artificially complicated examples.
+- Make the situations varied.
 - Avoid proper nouns unless necessary.
-- The reference answer is only one example; semantically equivalent translations may also be valid.
+- reference_answer is one natural model translation.
+- explanation_ja should explain why the target grammar is appropriate in this item.
 - key_points: 1 to 3 short Japanese learning points.
 
 Return ONLY JSON:
 {"questions":[
-  {"source_text":"...","reference_answer":"...","explanation_ja":"...","key_points":["..."]}
+  {
+    "grammar_id":"exact assigned id",
+    "source_text":"...",
+    "reference_answer":"...",
+    "explanation_ja":"...",
+    "key_points":["..."]
+  }
 ]}
 No markdown.`;
 
-    const data = await generateJson(prompt);
-    if(!data || !Array.isArray(data.questions) || data.questions.length !== count){
-      throw new Error("翻訳問題の形式が正しくありません。");
+    let data,lastError;
+    for(let attempt=0;attempt<3;attempt++){
+      try{
+        data=await generateJson(prompt);
+        if(!data || !Array.isArray(data.questions) || data.questions.length!==count){
+          throw new Error("問題数が一致しません。");
+        }
+        for(let i=0;i<count;i++){
+          const q=data.questions[i];
+          const g=targets[i];
+          if(!q?.source_text || !q?.reference_answer) throw new Error("翻訳問題に不足があります。");
+          if(String(q.grammar_id||"")!==g.id) throw new Error("文法ターゲットの対応が崩れています。");
+        }
+        break;
+      }catch(e){
+        data=null;
+        lastError=e;
+      }
     }
-    for(const q of data.questions){
-      if(!q?.source_text || !q?.reference_answer) throw new Error("翻訳問題に不足があります。");
-    }
-    res.json(data);
+    if(!data) throw lastError || new Error("文法指定問題の生成に失敗しました。");
+
+    const questions=data.questions.map((q,i)=>({
+      source_text:String(q.source_text||""),
+      reference_answer:String(q.reference_answer||""),
+      explanation_ja:String(q.explanation_ja||""),
+      key_points:Array.isArray(q.key_points)?q.key_points.slice(0,3).map(x=>String(x)):[],
+      grammar_id:targets[i].id,
+      grammar_name_ja:targets[i].name_ja,
+      grammar_pattern:targets[i].pattern,
+      grammar_function_ja:targets[i].function_ja
+    }));
+
+    res.json({
+      questions,
+      grammar_pool_info:{
+        level,
+        pool_size:pool.length,
+        unseen_remaining:Math.max(0,pool.filter(g=>!seenSet.has(g.id)).length-count)
+      }
+    });
   }catch(e){
     console.error(e);
     res.status(500).json({error:e.message || "翻訳問題の作成に失敗しました。"});
@@ -5187,6 +8431,8 @@ app.post("/api/writing-check", requireKey, async(req,res)=>{
     const mode = req.body.mode === "en-ja" ? "en-ja" : "ja-en";
     const sourceText = String(req.body.source_text || "").trim();
     const reference = String(req.body.reference_answer || "").trim();
+    const grammarName = String(req.body.grammar_name_ja || "").trim();
+    const grammarPattern = String(req.body.grammar_pattern || "").trim();
     const userAnswer = String(req.body.user_answer || "").trim();
     if(!sourceText || !userAnswer) return res.status(400).json({error:"問題文または回答がありません。"});
 
@@ -5200,6 +8446,7 @@ app.post("/api/writing-check", requireKey, async(req,res)=>{
 - Accept different English vocabulary, word order, contractions, and natural paraphrases when meaning is preserved.
 - Minor punctuation/capitalization mistakes should not make an otherwise correct answer wrong.
 - At lower CEFR levels, accept simple but grammatically acceptable English.
+- Because this exercise has an assigned target grammar, check whether the learner uses that grammar correctly when it is necessary for the intended meaning.
 - A meaningful grammar error that changes or obscures the intended meaning should be incorrect.`
       : `- Judge whether the Japanese accurately conveys the English meaning.
 - Do NOT require an exact match to the reference Japanese translation.
@@ -5218,6 +8465,11 @@ ${sourceText}
 
 One reference answer:
 ${reference}
+
+Target grammar:
+${grammarName || "(not specified)"}
+Pattern:
+${grammarPattern || "(not specified)"}
 
 Learner answer:
 ${userAnswer}
