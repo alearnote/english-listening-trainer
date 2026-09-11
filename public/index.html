@@ -58,13 +58,42 @@
         <div class="card">
           <div class="settings-grid">
             <label><span>出題形式</span><select id="vocabMode"><option value="en-ja">英 → 日</option><option value="ja-en">日 → 英</option><option value="blank">英文穴埋め</option></select></label>
-            <label><span>回答方式</span><select id="vocabAnswerMode"><option value="choice">4択</option><option value="input" selected>入力回答（AI判定）</option></select></label>
+            <label><span>回答方式</span><select id="vocabAnswerMode"><option value="choice">4択</option><option value="input" selected>入力回答（AI判定）</option><option value="falling">落下ゲーム（英→日・15語）</option></select></label>
             <label><span>問題数</span><select id="vocabCount"><option value="5">5問</option><option value="10" selected>10問</option><option value="15">15問</option><option value="20">20問</option><option value="30">30問</option></select></label>
           </div>
           <button id="newVocabBtn" class="primary">＋ 10問作る</button>
         </div>
 
         <div id="vocabStart" class="card empty-state"><div class="empty-icon">🧠</div><h2>Vocabulary</h2><p>4択または入力回答で学習できます。</p></div>
+
+
+        <div id="fallingPrep" class="card hidden">
+          <div class="falling-prep-head">
+            <div>
+              <h2>今回の15語</h2>
+              <p class="muted">まずこの15語を確認してからゲームを開始します。</p>
+            </div>
+            <button id="fallingStartBtn" class="primary">ゲーム開始</button>
+          </div>
+          <div id="fallingWordList" class="falling-word-list"></div>
+        </div>
+
+        <div id="fallingGame" class="card hidden">
+          <div class="falling-hud">
+            <span id="fallingProgress">1 / 15</span>
+            <span id="fallingScore">Score 0</span>
+          </div>
+
+          <div id="fallingBoard" class="falling-board">
+            <div class="falling-lane falling-lane-left"></div>
+            <div class="falling-lane falling-lane-right"></div>
+            <div id="fallingWord" class="falling-word"></div>
+            <div id="fallingHint" class="falling-hint hidden">選択肢を1つ減らしました</div>
+          </div>
+
+          <div id="fallingOptions" class="falling-options"></div>
+          <div id="fallingMessage" class="falling-message"></div>
+        </div>
 
         <div id="vocabQuiz" class="card hidden">
           <div class="progress-head"><span id="vocabProgress">1 / 10</span><span id="vocabRunningScore">Score 0</span></div>
@@ -182,6 +211,6 @@
       </section>
     </main>
   </div>
-  <script src="/app.js?v=20260911-vocab30-v10"></script>
+  <script src="/app.js?v=20260911-falling-v11"></script>
 </body>
 </html>
