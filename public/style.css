@@ -158,8 +158,6 @@
 
 
 /* Falling game countdown overlays */
-#vocabNextBtn.vocab-next-removed{display:none !important}
-
 #fallingGame{position:relative}
 .falling-overlay-countdown{
   position:absolute;
