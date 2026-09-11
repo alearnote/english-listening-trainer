@@ -599,15 +599,13 @@ function resetFallingLane(laneIndex,initial=false){
   lane.pausedUntil=0;
   lane.elapsed=0;
   lane.hintDone=false;
+  lane.hintDone=false;
 
   const word=$(`fallingWord${laneIndex}`);
   word.className="falling-word";
   word.textContent=lane.q.word||lane.q.prompt||"";
   word.style.transform="translate(-50%, 0px)";
   word.style.opacity="1";
-
-  $(`fallingHint${laneIndex}`).classList.add("hidden");
-  $(`fallingMessage${laneIndex}`).textContent=initial?"":"次の問題";
 
   $(`fallingOptions${laneIndex}`).innerHTML=lane.options.map((o,i)=>`
     <button type="button" class="falling-option" data-index="${i}" data-lane="${laneIndex}">
@@ -672,7 +670,7 @@ function fallingTick(ts){
     word.style.transform=`translate(-50%, ${progress*maxY}px)`;
 
     if(!lane.hintDone && lane.elapsed>=FALLING_HINT_MS){
-      eliminateOneWrongFallingOption(i);
+      eliminateOneWrongFallingOptionSilently(i);
       lane.hintDone=true;
     }
 
@@ -684,12 +682,12 @@ function fallingTick(ts){
   fallingRafId=requestAnimationFrame(fallingTick);
 }
 
-function eliminateOneWrongFallingOption(laneIndex){
+function eliminateOneWrongFallingOptionSilently(laneIndex){
   const s=fallingGameState;
   const lane=s?.lanes?.[laneIndex];
-  if(!lane)return;
-
+  if(!lane || lane.locked)return;
   const container=$(`fallingOptions${laneIndex}`);
+  if(!container)return;
   const candidates=[...container.querySelectorAll(".falling-option")].filter(btn=>{
     const i=Number(btn.dataset.index);
     return !lane.options[i]?.correct &&
@@ -697,12 +695,7 @@ function eliminateOneWrongFallingOption(laneIndex){
       !btn.classList.contains("wrong");
   });
   if(!candidates.length)return;
-
-  const btn=candidates[Math.floor(Math.random()*candidates.length)];
-  btn.classList.add("eliminated");
-  const hint=$(`fallingHint${laneIndex}`);
-  hint.classList.remove("hidden");
-  setTimeout(()=>hint.classList.add("hidden"),900);
+  candidates[Math.floor(Math.random()*candidates.length)].classList.add("eliminated");
 }
 
 function recordFallingWeak(q,lane){
@@ -744,7 +737,6 @@ function answerFallingOption(laneIndex,index){
 
     btn.classList.add("correct");
     $(`fallingWord${laneIndex}`).classList.add("falling-correct");
-    $(`fallingMessage${laneIndex}`).textContent=lane.hadWrong?"正解！":"正解！ 初回ボーナス";
 
     setTimeout(()=>resetFallingLane(laneIndex),260);
     return;
@@ -758,13 +750,11 @@ function answerFallingOption(laneIndex,index){
   btn.disabled=true;
   lane.locked=true;
   lane.pausedUntil=performance.now()+FALLING_WRONG_LOCK_MS;
-  $(`fallingMessage${laneIndex}`).textContent="不正解。少し待って再挑戦";
 
   setTimeout(()=>{
     if(!fallingGameState || fallingGameState.finished)return;
     btn.classList.add("eliminated");
     lane.locked=false;
-    $(`fallingMessage${laneIndex}`).textContent="残りから選択";
   },FALLING_WRONG_LOCK_MS);
 }
 
@@ -781,7 +771,6 @@ function timeoutFallingLane(laneIndex){
 
   $(`fallingWord${laneIndex}`).classList.add("falling-timeout");
   const correct=lane.options.find(x=>x.correct)?.text||q.meaning_ja||"";
-  $(`fallingMessage${laneIndex}`).textContent=`時間切れ：${correct}`;
 
   setTimeout(()=>resetFallingLane(laneIndex),430);
 }
