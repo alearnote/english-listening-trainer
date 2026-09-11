@@ -429,11 +429,12 @@ $("listeningMcqCheckBtn").addEventListener("click",()=>{
 $("nextListeningBtn").addEventListener("click",()=>$("newListeningBtn").click());
 
 
-/* Vocabulary Falling Game */
+/* Vocabulary Falling Game v12: two simultaneous lanes + global timer */
 const FALLING_GAME_COUNT = 15;
 const FALLING_HINT_MS = 4500;
-const FALLING_TIMEOUT_MS = 9000;
-const FALLING_WRONG_LOCK_MS = 1600;
+const FALLING_WORD_TIMEOUT_MS = 9000;
+const FALLING_WRONG_LOCK_MS = 1400;
+const FALLING_RECENT_WORDS_PER_LANE = 3;
 
 function shuffleCopy(arr){
   const x=[...(arr||[])];
@@ -448,7 +449,6 @@ function syncFallingModeUI(){
   const falling=$("vocabAnswerMode").value==="falling";
   $("vocabMode").disabled=falling;
   $("vocabCount").disabled=falling;
-
   if(falling){
     $("vocabMode").value="en-ja";
     $("vocabCount").value=String(FALLING_GAME_COUNT);
@@ -480,7 +480,6 @@ function renderFallingPrep(){
       <span>${escapeHtml(q.meaning_ja||q.options?.[q.answer_index]||"")}</span>
     </div>
   `).join("");
-
   $("fallingPrep").scrollIntoView({behavior:"smooth",block:"start"});
 }
 
@@ -490,230 +489,267 @@ function buildFallingOptions(q){
   const wrong=(q.options||[])
     .map((x,i)=>({text:String(x||"").trim(),i}))
     .filter(x=>x.text && x.i!==correctIndex);
-
   const picked=shuffleCopy(wrong).slice(0,2).map(x=>x.text);
-  return shuffleCopy([correct,...picked]).map(text=>({
-    text,
-    correct:text===correct
-  }));
+  return shuffleCopy([correct,...picked]).map(text=>({text,correct:text===correct}));
+}
+
+function chooseFallingQuestion(laneIndex){
+  const s=fallingGameState;
+  const lane=s.lanes[laneIndex];
+  const other=s.lanes[1-laneIndex];
+  const otherWord=other?.q?.word||"";
+  const recent=new Set(lane.recentWords||[]);
+
+  let candidates=vocabSet.filter(q=>
+    q &&
+    q.word!==otherWord &&
+    !recent.has(q.word)
+  );
+
+  if(!candidates.length){
+    candidates=vocabSet.filter(q=>q && q.word!==otherWord);
+  }
+  if(!candidates.length)candidates=[...vocabSet];
+
+  const q=candidates[Math.floor(Math.random()*candidates.length)];
+  lane.recentWords=[...(lane.recentWords||[]),q.word].slice(-FALLING_RECENT_WORDS_PER_LANE);
+  return q;
+}
+
+function freshLaneState(index){
+  return {
+    index,
+    q:null,
+    options:[],
+    hadWrong:false,
+    recordedWeak:false,
+    locked:false,
+    pausedUntil:0,
+    elapsed:0,
+    hintDone:false,
+    recentWords:[]
+  };
 }
 
 function startFallingGame(){
   if(!vocabSet.length)return;
-
   cancelFallingAnimation();
+
   $("fallingPrep").classList.add("hidden");
   $("vocabSummary").classList.add("hidden");
   $("vocabQuiz").classList.add("hidden");
   $("fallingGame").classList.remove("hidden");
 
+  const durationSec=Math.max(30,Number($("fallingDuration").value)||60);
+
   fallingGameState={
-    index:0,
     score:0,
     cleared:0,
     firstTryCorrect:0,
-    review:[],
-    currentHadWrong:false,
-    currentRecordedWeak:false,
-    locked:false,
-    pausedUntil:0,
-    elapsed:0,
-    lastTs:0,
-    hintDone:false,
+    attempts:0,
+    timeouts:0,
+    reviewMap:new Map(),
+    weakRecordedWords:new Set(),
+    startedAt:performance.now(),
+    durationMs:durationSec*1000,
     finished:false,
-    lane:Math.random()<.5?0:1
+    lastTs:0,
+    lanes:[freshLaneState(0),freshLaneState(1)]
   };
 
-  renderFallingQuestion();
+  resetFallingLane(0,true);
+  resetFallingLane(1,true);
+  updateFallingHud(durationSec*1000);
+  fallingRafId=requestAnimationFrame(fallingTick);
   $("fallingGame").scrollIntoView({behavior:"smooth",block:"start"});
 }
 
-function renderFallingQuestion(){
-  cancelFallingAnimation();
-
+function resetFallingLane(laneIndex,initial=false){
   const s=fallingGameState;
-  if(!s || s.index>=vocabSet.length){
-    finishFallingGame();
-    return;
-  }
+  if(!s || s.finished)return;
+  const lane=s.lanes[laneIndex];
+  lane.q=chooseFallingQuestion(laneIndex);
+  lane.options=buildFallingOptions(lane.q);
+  lane.hadWrong=false;
+  lane.recordedWeak=false;
+  lane.locked=false;
+  lane.pausedUntil=0;
+  lane.elapsed=0;
+  lane.hintDone=false;
 
-  const q=vocabSet[s.index];
-  s.currentHadWrong=false;
-  s.currentRecordedWeak=false;
-  s.locked=false;
-  s.pausedUntil=0;
-  s.elapsed=0;
-  s.lastTs=0;
-  s.hintDone=false;
-  s.lane=(s.index===0?s.lane:1-s.lane);
-
-  $("fallingProgress").textContent=`${s.index+1} / ${vocabSet.length}`;
-  $("fallingScore").textContent=`Score ${s.score}`;
-  $("fallingMessage").textContent="";
-  $("fallingHint").classList.add("hidden");
-
-  const word=$("fallingWord");
+  const word=$(`fallingWord${laneIndex}`);
   word.className="falling-word";
-  word.textContent=q.word||q.prompt||"";
-  word.style.left=s.lane===0?"25%":"75%";
+  word.textContent=lane.q.word||lane.q.prompt||"";
   word.style.transform="translate(-50%, 0px)";
   word.style.opacity="1";
 
-  const options=buildFallingOptions(q);
-  s.options=options;
+  $(`fallingHint${laneIndex}`).classList.add("hidden");
+  $(`fallingMessage${laneIndex}`).textContent=initial?"":"次の問題";
 
-  $("fallingOptions").innerHTML=options.map((o,i)=>`
-    <button type="button" class="falling-option" data-index="${i}">
+  $(`fallingOptions${laneIndex}`).innerHTML=lane.options.map((o,i)=>`
+    <button type="button" class="falling-option" data-index="${i}" data-lane="${laneIndex}">
       ${escapeHtml(o.text)}
     </button>
   `).join("");
 
-  document.querySelectorAll(".falling-option").forEach(btn=>{
-    btn.addEventListener("click",()=>answerFallingOption(Number(btn.dataset.index)));
+  $(`fallingOptions${laneIndex}`).querySelectorAll(".falling-option").forEach(btn=>{
+    btn.addEventListener("click",()=>answerFallingOption(
+      Number(btn.dataset.lane),Number(btn.dataset.index)
+    ));
   });
+}
 
-  fallingRafId=requestAnimationFrame(fallingTick);
+function updateFallingHud(remainingMs){
+  const s=fallingGameState;
+  $("fallingTimer").textContent=`残り ${(Math.max(0,remainingMs)/1000).toFixed(1)}秒`;
+  $("fallingScore").textContent=`Score ${s.score}`;
+  $("fallingCleared").textContent=`正解 ${s.cleared}`;
 }
 
 function fallingTick(ts){
   const s=fallingGameState;
   if(!s || s.finished)return;
 
+  const remaining=s.durationMs-(ts-s.startedAt);
+  updateFallingHud(remaining);
+
+  if(remaining<=0){
+    finishFallingGame();
+    return;
+  }
+
   if(!s.lastTs)s.lastTs=ts;
   const delta=Math.min(100,ts-s.lastTs);
   s.lastTs=ts;
 
-  const paused=ts<s.pausedUntil;
-  if(!paused)s.elapsed+=delta;
+  for(let i=0;i<2;i++){
+    const lane=s.lanes[i];
+    if(!lane.q)continue;
+    const paused=ts<lane.pausedUntil;
+    if(!paused)lane.elapsed+=delta;
 
-  const word=$("fallingWord");
-  if(paused)word.classList.add("falling-paused");
-  else word.classList.remove("falling-paused");
+    const word=$(`fallingWord${i}`);
+    if(paused)word.classList.add("falling-paused");
+    else word.classList.remove("falling-paused");
 
-  const progress=Math.min(1,s.elapsed/FALLING_TIMEOUT_MS);
-  const board=$("fallingBoard");
-  const maxY=Math.max(210,board.clientHeight-word.offsetHeight-28);
-  const y=progress*maxY;
-  word.style.transform=`translate(-50%, ${y}px)`;
+    const progress=Math.min(1,lane.elapsed/FALLING_WORD_TIMEOUT_MS);
+    const board=$(`fallingBoard${i}`);
+    const maxY=Math.max(150,board.clientHeight-word.offsetHeight-24);
+    word.style.transform=`translate(-50%, ${progress*maxY}px)`;
 
-  if(!s.hintDone && s.elapsed>=FALLING_HINT_MS){
-    eliminateOneWrongFallingOption();
-    s.hintDone=true;
-  }
+    if(!lane.hintDone && lane.elapsed>=FALLING_HINT_MS){
+      eliminateOneWrongFallingOption(i);
+      lane.hintDone=true;
+    }
 
-  if(s.elapsed>=FALLING_TIMEOUT_MS){
-    timeoutFallingQuestion();
-    return;
+    if(lane.elapsed>=FALLING_WORD_TIMEOUT_MS && !lane.locked){
+      timeoutFallingLane(i);
+    }
   }
 
   fallingRafId=requestAnimationFrame(fallingTick);
 }
 
-function eliminateOneWrongFallingOption(){
+function eliminateOneWrongFallingOption(laneIndex){
   const s=fallingGameState;
-  if(!s)return;
-  const buttons=[...document.querySelectorAll(".falling-option")];
-  const candidates=buttons.filter(btn=>{
+  const lane=s?.lanes?.[laneIndex];
+  if(!lane)return;
+
+  const container=$(`fallingOptions${laneIndex}`);
+  const candidates=[...container.querySelectorAll(".falling-option")].filter(btn=>{
     const i=Number(btn.dataset.index);
-    return !s.options[i]?.correct &&
+    return !lane.options[i]?.correct &&
       !btn.classList.contains("eliminated") &&
       !btn.classList.contains("wrong");
   });
-
   if(!candidates.length)return;
+
   const btn=candidates[Math.floor(Math.random()*candidates.length)];
   btn.classList.add("eliminated");
-  $("fallingHint").classList.remove("hidden");
-  setTimeout(()=>$("fallingHint").classList.add("hidden"),900);
+  const hint=$(`fallingHint${laneIndex}`);
+  hint.classList.remove("hidden");
+  setTimeout(()=>hint.classList.add("hidden"),900);
 }
 
-function recordFallingWeakOnce(q){
+function recordFallingWeak(q,lane){
   const s=fallingGameState;
-  if(!s.currentRecordedWeak){
+  if(!lane.recordedWeak){
     addWeakWord(q.word,q.meaning_ja);
-    s.currentRecordedWeak=true;
+    lane.recordedWeak=true;
+  }
+  if(!s.reviewMap.has(q.word)){
+    s.reviewMap.set(q.word,{q,wrong:0,timeouts:0,correct:0});
   }
 }
 
-function answerFallingOption(index){
+function answerFallingOption(laneIndex,index){
   const s=fallingGameState;
-  if(!s || s.finished || s.locked)return;
+  const lane=s?.lanes?.[laneIndex];
+  if(!s || s.finished || !lane || lane.locked)return;
 
-  const option=s.options?.[index];
-  if(!option)return;
+  const option=lane.options[index];
+  const btn=$(`fallingOptions${laneIndex}`).querySelector(`.falling-option[data-index="${index}"]`);
+  if(!option || !btn || btn.classList.contains("eliminated"))return;
 
-  const btn=[...document.querySelectorAll(".falling-option")]
-    .find(x=>Number(x.dataset.index)===index);
-
-  if(!btn || btn.classList.contains("eliminated"))return;
-
-  const q=vocabSet[s.index];
+  const q=lane.q;
+  s.attempts++;
 
   if(option.correct){
-    s.locked=true;
+    lane.locked=true;
     s.cleared++;
-    if(!s.currentHadWrong){
+    if(!lane.hadWrong){
       s.firstTryCorrect++;
       recordVocabCorrect(q.word,q.meaning_ja);
     }
 
-    const timeRatio=Math.max(0,1-s.elapsed/FALLING_TIMEOUT_MS);
-    const timeBonus=Math.round(timeRatio*50);
-    const firstTryBonus=s.currentHadWrong?0:50;
-    s.score+=100+timeBonus+firstTryBonus;
+    const record=s.reviewMap.get(q.word);
+    if(record)record.correct++;
+
+    const timeRatio=Math.max(0,1-lane.elapsed/FALLING_WORD_TIMEOUT_MS);
+    s.score+=100+Math.round(timeRatio*50)+(lane.hadWrong?0:50);
 
     btn.classList.add("correct");
-    $("fallingWord").classList.add("falling-correct");
-    $("fallingMessage").textContent=s.currentHadWrong?"正解！":"正解！ + first try bonus";
+    $(`fallingWord${laneIndex}`).classList.add("falling-correct");
+    $(`fallingMessage${laneIndex}`).textContent=lane.hadWrong?"正解！":"正解！ 初回ボーナス";
 
-    cancelFallingAnimation();
-    setTimeout(()=>{
-      s.index++;
-      renderFallingQuestion();
-    },360);
+    setTimeout(()=>resetFallingLane(laneIndex),260);
     return;
   }
 
-  s.currentHadWrong=true;
-  recordFallingWeakOnce(q);
-  if(!s.review.some(x=>x.word===q.word)){
-    s.review.push(q);
-  }
+  lane.hadWrong=true;
+  recordFallingWeak(q,lane);
+  s.reviewMap.get(q.word).wrong++;
 
   btn.classList.add("wrong");
   btn.disabled=true;
-  s.locked=true;
-  s.pausedUntil=performance.now()+FALLING_WRONG_LOCK_MS;
-  $("fallingMessage").textContent="不正解。少し待ってから残りの選択肢で再挑戦できます。";
+  lane.locked=true;
+  lane.pausedUntil=performance.now()+FALLING_WRONG_LOCK_MS;
+  $(`fallingMessage${laneIndex}`).textContent="不正解。少し待って再挑戦";
 
   setTimeout(()=>{
     if(!fallingGameState || fallingGameState.finished)return;
     btn.classList.add("eliminated");
-    s.locked=false;
-    $("fallingMessage").textContent="残りの選択肢から選んでください。";
+    lane.locked=false;
+    $(`fallingMessage${laneIndex}`).textContent="残りから選択";
   },FALLING_WRONG_LOCK_MS);
 }
 
-function timeoutFallingQuestion(){
+function timeoutFallingLane(laneIndex){
   const s=fallingGameState;
-  if(!s || s.finished)return;
-  s.locked=true;
-  cancelFallingAnimation();
+  const lane=s?.lanes?.[laneIndex];
+  if(!s || s.finished || !lane)return;
 
-  const q=vocabSet[s.index];
-  recordFallingWeakOnce(q);
-  if(!s.review.some(x=>x.word===q.word)){
-    s.review.push(q);
-  }
+  lane.locked=true;
+  s.timeouts++;
+  const q=lane.q;
+  recordFallingWeak(q,lane);
+  s.reviewMap.get(q.word).timeouts++;
 
-  $("fallingWord").classList.add("falling-timeout");
-  const correct=s.options?.find(x=>x.correct)?.text||q.meaning_ja||"";
-  $("fallingMessage").textContent=`時間切れ：${q.word} = ${correct}`;
+  $(`fallingWord${laneIndex}`).classList.add("falling-timeout");
+  const correct=lane.options.find(x=>x.correct)?.text||q.meaning_ja||"";
+  $(`fallingMessage${laneIndex}`).textContent=`時間切れ：${correct}`;
 
-  setTimeout(()=>{
-    s.index++;
-    renderFallingQuestion();
-  },700);
+  setTimeout(()=>resetFallingLane(laneIndex),430);
 }
 
 function finishFallingGame(){
@@ -725,30 +761,35 @@ function finishFallingGame(){
   $("fallingGame").classList.add("hidden");
   $("vocabSummary").classList.remove("hidden");
 
+  const review=[...s.reviewMap.values()];
   vocabCorrect=s.firstTryCorrect;
-  vocabMistakes=s.review;
+  vocabMistakes=review.map(x=>x.q);
 
-  $("vocabFinalScore").textContent=`${s.cleared}/${vocabSet.length}`;
+  $("vocabFinalScore").textContent=`${s.cleared}回正解`;
   $("vocabSummaryMsg").innerHTML=
-    `Game score: <strong>${s.score}</strong>　初回正解: <strong>${s.firstTryCorrect}/${vocabSet.length}</strong>`;
+    `Game score: <strong>${s.score}</strong>　初回正解: <strong>${s.firstTryCorrect}</strong>　時間切れ: <strong>${s.timeouts}</strong>`;
 
-  $("vocabReview").innerHTML=s.review.length
-    ? `<h3>Review</h3>${s.review.map(q=>`
+  $("vocabReview").innerHTML=review.length
+    ? `<h3>Review</h3>${review.map(({q,wrong,timeouts,correct})=>`
         <div class="review-card">
           <strong>${escapeHtml(q.word||"")}</strong> — ${escapeHtml(q.meaning_ja||"")}
+          <p>誤答 ${wrong}回 / 時間切れ ${timeouts}回 / その後の正解 ${correct}回</p>
           <p>${escapeHtml(q.explanation_ja||"")}</p>
         </div>`).join("")}`
-    : `<div class="review-card review-correct">全15語を初回で正解しました！</div>`;
+    : `<div class="review-card review-correct">ノーミスでした！</div>`;
 
-  progress.vocabulary+=vocabSet.length;
+  // 時間制ゲームなので、Progressは出題回数ではなく実際の回答・時間切れ回数を加算
+  const completedEvents=s.cleared+s.timeouts;
+  progress.vocabulary+=completedEvents;
   progress.correct+=s.firstTryCorrect;
-  progress.total+=vocabSet.length;
+  progress.total+=completedEvents;
   saveProgress();
 
   $("vocabSummary").scrollIntoView({behavior:"smooth",block:"start"});
 }
 
 $("fallingStartBtn").addEventListener("click",startFallingGame);
+
 
 /* Vocabulary */
 const vocabAudioCache = new Map();
