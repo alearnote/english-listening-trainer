@@ -445,9 +445,25 @@ function shuffleCopy(arr){
   return x;
 }
 
+function syncVocabNextButtonForMode(){
+  const falling=$("vocabAnswerMode").value==="falling";
+  const btn=$("vocabNextBtn");
+  if(!btn)return;
+
+  // 落下ゲームでは通常の「次の問題」は使わない。
+  // 通常モードでは回答後の既存処理に任せる。
+  if(falling){
+    btn.classList.add("hidden");
+    btn.disabled=true;
+  }else{
+    btn.disabled=false;
+  }
+}
+
 function syncFallingModeUI(){
   const falling=$("vocabAnswerMode").value==="falling";
   $("vocabCount").disabled=falling;
+  syncVocabNextButtonForMode();
 
   if(falling){
     // 落下ゲームは英→日 / 日→英の両方に対応。英文穴埋めだけ対象外。
@@ -942,6 +958,7 @@ async function generateVocab(){
 
 function renderVocabQuestion(){
   $("fallingPrep").classList.add("hidden");$("fallingGame").classList.add("hidden");
+  syncVocabNextButtonForMode();
   const q=vocabSet[vocabIndex],total=vocabSet.length,answerMode=$("vocabAnswerMode").value;vocabAnswered=false;
   syncVocabPronunciationButton();$("vocabProgress").textContent=`${vocabIndex+1} / ${total}`;$("vocabRunningScore").textContent=`Score ${vocabCorrect}`;$("vocabBar").style.width=`${vocabIndex/total*100}%`;$("vocabPrompt").textContent=q.prompt;$("vocabContext").textContent="";$("vocabContext").classList.add("hidden");$("vocabFeedback").classList.add("hidden");$("vocabNextBtn").classList.add("hidden");$("vocabInputAnswer").value="";$("vocabInputAnswer").disabled=false;$("vocabInputSubmitBtn").disabled=false;$("vocabGiveUpBtn").disabled=false;
   if(answerMode==="choice"){
