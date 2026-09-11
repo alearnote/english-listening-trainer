@@ -447,10 +447,11 @@ function shuffleCopy(arr){
 
 function syncFallingModeUI(){
   const falling=$("vocabAnswerMode").value==="falling";
-  $("vocabMode").disabled=falling;
   $("vocabCount").disabled=falling;
+
   if(falling){
-    $("vocabMode").value="en-ja";
+    // 落下ゲームは英→日 / 日→英の両方に対応。英文穴埋めだけ対象外。
+    if($("vocabMode").value==="blank")$("vocabMode").value="en-ja";
     $("vocabCount").value=String(FALLING_GAME_COUNT);
     $("newVocabBtn").textContent="＋ 15語を準備";
   }else{
@@ -458,6 +459,11 @@ function syncFallingModeUI(){
   }
 }
 $("vocabAnswerMode").addEventListener("change",syncFallingModeUI);
+$("vocabMode").addEventListener("change",()=>{
+  if($("vocabAnswerMode").value==="falling" && $("vocabMode").value==="blank"){
+    $("vocabMode").value="en-ja";
+  }
+});
 syncFallingModeUI();
 
 function cancelFallingAnimation(){
@@ -474,13 +480,25 @@ function renderFallingPrep(){
   $("fallingGame").classList.add("hidden");
   $("fallingPrep").classList.remove("hidden");
 
-  $("fallingWordList").innerHTML=vocabSet.map((q,i)=>`
-    <div class="falling-word-item">
-      <strong>${i+1}. ${escapeHtml(q.word||q.prompt||"")}</strong>
-      <span>${escapeHtml(q.meaning_ja||q.options?.[q.answer_index]||"")}</span>
-    </div>
-  `).join("");
+  const jaToEn=$("vocabMode").value==="ja-en";
+  $("fallingWordList").innerHTML=vocabSet.map((q,i)=>{
+    const en=String(q.word||"").trim();
+    const ja=String(q.meaning_ja||q.prompt||q.options?.[q.answer_index]||"").trim();
+    const main=jaToEn?ja:en;
+    const sub=jaToEn?en:ja;
+    return `
+      <div class="falling-word-item">
+        <strong>${i+1}. ${escapeHtml(main)}</strong>
+        <span>${escapeHtml(sub)}</span>
+      </div>`;
+  }).join("");
   $("fallingPrep").scrollIntoView({behavior:"smooth",block:"start"});
+}
+
+function fallingPromptText(q){
+  return $("vocabMode").value==="ja-en"
+    ? String(q.prompt||q.meaning_ja||"").trim()
+    : String(q.word||q.prompt||"").trim();
 }
 
 function buildFallingOptions(q){
@@ -603,7 +621,7 @@ function resetFallingLane(laneIndex,initial=false){
 
   const word=$(`fallingWord${laneIndex}`);
   word.className="falling-word";
-  word.textContent=lane.q.word||lane.q.prompt||"";
+  word.textContent=fallingPromptText(lane.q);
   word.style.transform="translate(-50%, 0px)";
   word.style.opacity="1";
 
@@ -891,7 +909,7 @@ async function generateVocab(){
 
     const data=await postJson("/api/vocabulary",{
       ...commonSettings(),
-      mode:falling?"en-ja":$("vocabMode").value,
+      mode:$("vocabMode").value,
       count:falling?FALLING_GAME_COUNT:Number($("vocabCount").value),
       recentWords:loadVocabHistory(),
       weakWords:getWeakWordsForReview(),
