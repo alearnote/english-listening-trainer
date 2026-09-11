@@ -9,6 +9,9 @@ let vocabIndex = 0;
 let vocabCorrect = 0;
 let vocabMistakes = [];
 let vocabAnswered = false;
+let fallingGameState = null;
+let fallingRafId = 0;
+
 let reading = null;
 let writingSet = [];
 let writingIndex = 0;
@@ -425,6 +428,328 @@ $("listeningMcqCheckBtn").addEventListener("click",()=>{
 });
 $("nextListeningBtn").addEventListener("click",()=>$("newListeningBtn").click());
 
+
+/* Vocabulary Falling Game */
+const FALLING_GAME_COUNT = 15;
+const FALLING_HINT_MS = 4500;
+const FALLING_TIMEOUT_MS = 9000;
+const FALLING_WRONG_LOCK_MS = 1600;
+
+function shuffleCopy(arr){
+  const x=[...(arr||[])];
+  for(let i=x.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [x[i],x[j]]=[x[j],x[i]];
+  }
+  return x;
+}
+
+function syncFallingModeUI(){
+  const falling=$("vocabAnswerMode").value==="falling";
+  $("vocabMode").disabled=falling;
+  $("vocabCount").disabled=falling;
+
+  if(falling){
+    $("vocabMode").value="en-ja";
+    $("vocabCount").value=String(FALLING_GAME_COUNT);
+    $("newVocabBtn").textContent="＋ 15語を準備";
+  }else{
+    $("newVocabBtn").textContent=`＋ ${$("vocabCount").value}問作る`;
+  }
+}
+$("vocabAnswerMode").addEventListener("change",syncFallingModeUI);
+syncFallingModeUI();
+
+function cancelFallingAnimation(){
+  if(fallingRafId){
+    cancelAnimationFrame(fallingRafId);
+    fallingRafId=0;
+  }
+}
+
+function renderFallingPrep(){
+  cancelFallingAnimation();
+  $("vocabQuiz").classList.add("hidden");
+  $("vocabSummary").classList.add("hidden");
+  $("fallingGame").classList.add("hidden");
+  $("fallingPrep").classList.remove("hidden");
+
+  $("fallingWordList").innerHTML=vocabSet.map((q,i)=>`
+    <div class="falling-word-item">
+      <strong>${i+1}. ${escapeHtml(q.word||q.prompt||"")}</strong>
+      <span>${escapeHtml(q.meaning_ja||q.options?.[q.answer_index]||"")}</span>
+    </div>
+  `).join("");
+
+  $("fallingPrep").scrollIntoView({behavior:"smooth",block:"start"});
+}
+
+function buildFallingOptions(q){
+  const correctIndex=Number(q.answer_index);
+  const correct=String(q.options?.[correctIndex]||q.meaning_ja||"").trim();
+  const wrong=(q.options||[])
+    .map((x,i)=>({text:String(x||"").trim(),i}))
+    .filter(x=>x.text && x.i!==correctIndex);
+
+  const picked=shuffleCopy(wrong).slice(0,2).map(x=>x.text);
+  return shuffleCopy([correct,...picked]).map(text=>({
+    text,
+    correct:text===correct
+  }));
+}
+
+function startFallingGame(){
+  if(!vocabSet.length)return;
+
+  cancelFallingAnimation();
+  $("fallingPrep").classList.add("hidden");
+  $("vocabSummary").classList.add("hidden");
+  $("vocabQuiz").classList.add("hidden");
+  $("fallingGame").classList.remove("hidden");
+
+  fallingGameState={
+    index:0,
+    score:0,
+    cleared:0,
+    firstTryCorrect:0,
+    review:[],
+    currentHadWrong:false,
+    currentRecordedWeak:false,
+    locked:false,
+    pausedUntil:0,
+    elapsed:0,
+    lastTs:0,
+    hintDone:false,
+    finished:false,
+    lane:Math.random()<.5?0:1
+  };
+
+  renderFallingQuestion();
+  $("fallingGame").scrollIntoView({behavior:"smooth",block:"start"});
+}
+
+function renderFallingQuestion(){
+  cancelFallingAnimation();
+
+  const s=fallingGameState;
+  if(!s || s.index>=vocabSet.length){
+    finishFallingGame();
+    return;
+  }
+
+  const q=vocabSet[s.index];
+  s.currentHadWrong=false;
+  s.currentRecordedWeak=false;
+  s.locked=false;
+  s.pausedUntil=0;
+  s.elapsed=0;
+  s.lastTs=0;
+  s.hintDone=false;
+  s.lane=(s.index===0?s.lane:1-s.lane);
+
+  $("fallingProgress").textContent=`${s.index+1} / ${vocabSet.length}`;
+  $("fallingScore").textContent=`Score ${s.score}`;
+  $("fallingMessage").textContent="";
+  $("fallingHint").classList.add("hidden");
+
+  const word=$("fallingWord");
+  word.className="falling-word";
+  word.textContent=q.word||q.prompt||"";
+  word.style.left=s.lane===0?"25%":"75%";
+  word.style.transform="translate(-50%, 0px)";
+  word.style.opacity="1";
+
+  const options=buildFallingOptions(q);
+  s.options=options;
+
+  $("fallingOptions").innerHTML=options.map((o,i)=>`
+    <button type="button" class="falling-option" data-index="${i}">
+      ${escapeHtml(o.text)}
+    </button>
+  `).join("");
+
+  document.querySelectorAll(".falling-option").forEach(btn=>{
+    btn.addEventListener("click",()=>answerFallingOption(Number(btn.dataset.index)));
+  });
+
+  fallingRafId=requestAnimationFrame(fallingTick);
+}
+
+function fallingTick(ts){
+  const s=fallingGameState;
+  if(!s || s.finished)return;
+
+  if(!s.lastTs)s.lastTs=ts;
+  const delta=Math.min(100,ts-s.lastTs);
+  s.lastTs=ts;
+
+  const paused=ts<s.pausedUntil;
+  if(!paused)s.elapsed+=delta;
+
+  const word=$("fallingWord");
+  if(paused)word.classList.add("falling-paused");
+  else word.classList.remove("falling-paused");
+
+  const progress=Math.min(1,s.elapsed/FALLING_TIMEOUT_MS);
+  const board=$("fallingBoard");
+  const maxY=Math.max(210,board.clientHeight-word.offsetHeight-28);
+  const y=progress*maxY;
+  word.style.transform=`translate(-50%, ${y}px)`;
+
+  if(!s.hintDone && s.elapsed>=FALLING_HINT_MS){
+    eliminateOneWrongFallingOption();
+    s.hintDone=true;
+  }
+
+  if(s.elapsed>=FALLING_TIMEOUT_MS){
+    timeoutFallingQuestion();
+    return;
+  }
+
+  fallingRafId=requestAnimationFrame(fallingTick);
+}
+
+function eliminateOneWrongFallingOption(){
+  const s=fallingGameState;
+  if(!s)return;
+  const buttons=[...document.querySelectorAll(".falling-option")];
+  const candidates=buttons.filter(btn=>{
+    const i=Number(btn.dataset.index);
+    return !s.options[i]?.correct &&
+      !btn.classList.contains("eliminated") &&
+      !btn.classList.contains("wrong");
+  });
+
+  if(!candidates.length)return;
+  const btn=candidates[Math.floor(Math.random()*candidates.length)];
+  btn.classList.add("eliminated");
+  $("fallingHint").classList.remove("hidden");
+  setTimeout(()=>$("fallingHint").classList.add("hidden"),900);
+}
+
+function recordFallingWeakOnce(q){
+  const s=fallingGameState;
+  if(!s.currentRecordedWeak){
+    addWeakWord(q.word,q.meaning_ja);
+    s.currentRecordedWeak=true;
+  }
+}
+
+function answerFallingOption(index){
+  const s=fallingGameState;
+  if(!s || s.finished || s.locked)return;
+
+  const option=s.options?.[index];
+  if(!option)return;
+
+  const btn=[...document.querySelectorAll(".falling-option")]
+    .find(x=>Number(x.dataset.index)===index);
+
+  if(!btn || btn.classList.contains("eliminated"))return;
+
+  const q=vocabSet[s.index];
+
+  if(option.correct){
+    s.locked=true;
+    s.cleared++;
+    if(!s.currentHadWrong){
+      s.firstTryCorrect++;
+      recordVocabCorrect(q.word,q.meaning_ja);
+    }
+
+    const timeRatio=Math.max(0,1-s.elapsed/FALLING_TIMEOUT_MS);
+    const timeBonus=Math.round(timeRatio*50);
+    const firstTryBonus=s.currentHadWrong?0:50;
+    s.score+=100+timeBonus+firstTryBonus;
+
+    btn.classList.add("correct");
+    $("fallingWord").classList.add("falling-correct");
+    $("fallingMessage").textContent=s.currentHadWrong?"正解！":"正解！ + first try bonus";
+
+    cancelFallingAnimation();
+    setTimeout(()=>{
+      s.index++;
+      renderFallingQuestion();
+    },360);
+    return;
+  }
+
+  s.currentHadWrong=true;
+  recordFallingWeakOnce(q);
+  if(!s.review.some(x=>x.word===q.word)){
+    s.review.push(q);
+  }
+
+  btn.classList.add("wrong");
+  btn.disabled=true;
+  s.locked=true;
+  s.pausedUntil=performance.now()+FALLING_WRONG_LOCK_MS;
+  $("fallingMessage").textContent="不正解。少し待ってから残りの選択肢で再挑戦できます。";
+
+  setTimeout(()=>{
+    if(!fallingGameState || fallingGameState.finished)return;
+    btn.classList.add("eliminated");
+    s.locked=false;
+    $("fallingMessage").textContent="残りの選択肢から選んでください。";
+  },FALLING_WRONG_LOCK_MS);
+}
+
+function timeoutFallingQuestion(){
+  const s=fallingGameState;
+  if(!s || s.finished)return;
+  s.locked=true;
+  cancelFallingAnimation();
+
+  const q=vocabSet[s.index];
+  recordFallingWeakOnce(q);
+  if(!s.review.some(x=>x.word===q.word)){
+    s.review.push(q);
+  }
+
+  $("fallingWord").classList.add("falling-timeout");
+  const correct=s.options?.find(x=>x.correct)?.text||q.meaning_ja||"";
+  $("fallingMessage").textContent=`時間切れ：${q.word} = ${correct}`;
+
+  setTimeout(()=>{
+    s.index++;
+    renderFallingQuestion();
+  },700);
+}
+
+function finishFallingGame(){
+  const s=fallingGameState;
+  if(!s || s.finished)return;
+  s.finished=true;
+  cancelFallingAnimation();
+
+  $("fallingGame").classList.add("hidden");
+  $("vocabSummary").classList.remove("hidden");
+
+  vocabCorrect=s.firstTryCorrect;
+  vocabMistakes=s.review;
+
+  $("vocabFinalScore").textContent=`${s.cleared}/${vocabSet.length}`;
+  $("vocabSummaryMsg").innerHTML=
+    `Game score: <strong>${s.score}</strong>　初回正解: <strong>${s.firstTryCorrect}/${vocabSet.length}</strong>`;
+
+  $("vocabReview").innerHTML=s.review.length
+    ? `<h3>Review</h3>${s.review.map(q=>`
+        <div class="review-card">
+          <strong>${escapeHtml(q.word||"")}</strong> — ${escapeHtml(q.meaning_ja||"")}
+          <p>${escapeHtml(q.explanation_ja||"")}</p>
+        </div>`).join("")}`
+    : `<div class="review-card review-correct">全15語を初回で正解しました！</div>`;
+
+  progress.vocabulary+=vocabSet.length;
+  progress.correct+=s.firstTryCorrect;
+  progress.total+=vocabSet.length;
+  saveProgress();
+
+  $("vocabSummary").scrollIntoView({behavior:"smooth",block:"start"});
+}
+
+$("fallingStartBtn").addEventListener("click",startFallingGame);
+
 /* Vocabulary */
 const vocabAudioCache = new Map();
 
@@ -480,19 +805,57 @@ async function playVocabPronunciation(){
 
 $("vocabPronounceBtn").addEventListener("click", playVocabPronunciation);
 $("vocabMode").addEventListener("change", syncVocabPronunciationButton);
-$("vocabCount").addEventListener("change",()=>{$("newVocabBtn").textContent=`＋ ${$("vocabCount").value}問作る`;});
+$("vocabCount").addEventListener("change",()=>{if($("vocabAnswerMode").value!=="falling")$("newVocabBtn").textContent=`＋ ${$("vocabCount").value}問作る`;});
 $("newVocabBtn").addEventListener("click",generateVocab);$("vocabAgainBtn").addEventListener("click",generateVocab);
 
 async function generateVocab(){
   const btn=$("newVocabBtn");
+  const falling=$("vocabAnswerMode").value==="falling";
   try{
-    btn.disabled=true;$("vocabStart").classList.remove("hidden");$("vocabStart").innerHTML=`<div class="empty-icon">⏳</div><h2>問題を作成しています…</h2>`;$("vocabQuiz").classList.add("hidden");$("vocabSummary").classList.add("hidden");
-    const data=await postJson("/api/vocabulary",{...commonSettings(),mode:$("vocabMode").value,count:Number($("vocabCount").value),recentWords:loadVocabHistory(),weakWords:getWeakWordsForReview(),masteredWords:getMasteredWords()});
-    vocabSet=data.questions||[];if(!vocabSet.length)throw new Error("問題を生成できませんでした。");rememberVocabWords(vocabSet.map(q=>q.word));vocabIndex=0;vocabCorrect=0;vocabMistakes=[];vocabAnswered=false;$("vocabStart").classList.add("hidden");$("vocabQuiz").classList.remove("hidden");renderVocabQuestion();$("vocabQuiz").scrollIntoView({behavior:"smooth",block:"start"});
-  }catch(e){$("vocabStart").classList.remove("hidden");$("vocabStart").innerHTML=`<div class="empty-icon">⚠️</div><h2>エラー</h2><p class="error">${escapeHtml(e.message)}</p>`;}finally{btn.disabled=false;}
+    btn.disabled=true;
+    cancelFallingAnimation();
+    $("vocabStart").classList.remove("hidden");
+    $("vocabStart").innerHTML=`<div class="empty-icon">⏳</div><h2>${falling?"15語を準備しています…":"問題を作成しています…"}</h2>`;
+    $("vocabQuiz").classList.add("hidden");
+    $("vocabSummary").classList.add("hidden");
+    $("fallingPrep").classList.add("hidden");
+    $("fallingGame").classList.add("hidden");
+
+    const data=await postJson("/api/vocabulary",{
+      ...commonSettings(),
+      mode:falling?"en-ja":$("vocabMode").value,
+      count:falling?FALLING_GAME_COUNT:Number($("vocabCount").value),
+      recentWords:loadVocabHistory(),
+      weakWords:getWeakWordsForReview(),
+      masteredWords:getMasteredWords()
+    });
+
+    vocabSet=data.questions||[];
+    if(!vocabSet.length)throw new Error("問題を生成できませんでした。");
+    rememberVocabWords(vocabSet.map(q=>q.word));
+    vocabIndex=0;
+    vocabCorrect=0;
+    vocabMistakes=[];
+    vocabAnswered=false;
+    $("vocabStart").classList.add("hidden");
+
+    if(falling){
+      renderFallingPrep();
+    }else{
+      $("vocabQuiz").classList.remove("hidden");
+      renderVocabQuestion();
+      $("vocabQuiz").scrollIntoView({behavior:"smooth",block:"start"});
+    }
+  }catch(e){
+    $("vocabStart").classList.remove("hidden");
+    $("vocabStart").innerHTML=`<div class="empty-icon">⚠️</div><h2>エラー</h2><p class="error">${escapeHtml(e.message)}</p>`;
+  }finally{
+    btn.disabled=false;
+  }
 }
 
 function renderVocabQuestion(){
+  $("fallingPrep").classList.add("hidden");$("fallingGame").classList.add("hidden");
   const q=vocabSet[vocabIndex],total=vocabSet.length,answerMode=$("vocabAnswerMode").value;vocabAnswered=false;
   syncVocabPronunciationButton();$("vocabProgress").textContent=`${vocabIndex+1} / ${total}`;$("vocabRunningScore").textContent=`Score ${vocabCorrect}`;$("vocabBar").style.width=`${vocabIndex/total*100}%`;$("vocabPrompt").textContent=q.prompt;$("vocabContext").textContent="";$("vocabContext").classList.add("hidden");$("vocabFeedback").classList.add("hidden");$("vocabNextBtn").classList.add("hidden");$("vocabInputAnswer").value="";$("vocabInputAnswer").disabled=false;$("vocabInputSubmitBtn").disabled=false;$("vocabGiveUpBtn").disabled=false;
   if(answerMode==="choice"){
