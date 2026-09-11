@@ -81,3 +81,135 @@
 #dictionaryInput{
   font-size:1.05rem;
 }
+
+
+/* Vocabulary Falling Game */
+.falling-prep-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+  margin-bottom:14px;
+}
+.falling-prep-head h2{margin:0 0 4px}
+.falling-word-list{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+  gap:8px;
+}
+.falling-word-item{
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:10px 12px;
+  background:#fbfcfd;
+}
+.falling-word-item strong{display:block;font-size:1.02rem}
+.falling-word-item span{display:block;color:var(--muted);font-size:.9rem;margin-top:3px}
+
+.falling-hud{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  font-weight:700;
+  margin-bottom:10px;
+}
+.falling-board{
+  position:relative;
+  overflow:hidden;
+  height:390px;
+  border-radius:18px;
+  border:1px solid var(--line);
+  background:
+    linear-gradient(to right, transparent 49.6%, rgba(255,255,255,.7) 49.6%, rgba(255,255,255,.7) 50.4%, transparent 50.4%),
+    linear-gradient(#eef7ff,#f8fbfd 72%,#eef4f6);
+}
+.falling-lane{
+  position:absolute;
+  top:0;
+  bottom:0;
+  width:50%;
+  pointer-events:none;
+}
+.falling-lane-left{left:0}
+.falling-lane-right{right:0}
+.falling-word{
+  position:absolute;
+  top:18px;
+  left:25%;
+  transform:translate(-50%,0);
+  max-width:43%;
+  padding:10px 14px;
+  border-radius:14px;
+  background:rgba(255,255,255,.95);
+  border:2px solid rgba(46,107,255,.35);
+  box-shadow:0 8px 22px rgba(20,50,80,.13);
+  font-weight:800;
+  font-size:clamp(24px,5vw,38px);
+  text-align:center;
+  will-change:transform,opacity;
+  z-index:2;
+}
+.falling-word.falling-paused{border-color:#f1a22d}
+.falling-word.falling-correct{
+  opacity:0;
+  transform:translate(-50%,0) scale(1.25);
+  transition:opacity .28s ease, transform .28s ease;
+}
+.falling-word.falling-timeout{
+  opacity:0;
+  transform:translate(-50%,330px);
+  transition:opacity .45s ease, transform .45s ease;
+}
+.falling-hint{
+  position:absolute;
+  left:50%;
+  bottom:12px;
+  transform:translateX(-50%);
+  padding:7px 10px;
+  border-radius:999px;
+  background:rgba(23,32,51,.78);
+  color:#fff;
+  font-size:.82rem;
+  z-index:3;
+}
+.falling-options{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:9px;
+  margin-top:12px;
+}
+.falling-option{
+  min-height:68px;
+  font-weight:700;
+  line-height:1.35;
+}
+.falling-option.wrong{
+  background:var(--bad-bg);
+  border-color:#e8a8ae;
+  color:var(--bad);
+}
+.falling-option.correct{
+  background:var(--good-bg);
+  border-color:#9fd9bd;
+  color:var(--good);
+}
+.falling-option.eliminated{
+  opacity:0;
+  pointer-events:none;
+  transform:scale(.92);
+  transition:opacity .28s ease, transform .28s ease;
+}
+.falling-message{
+  min-height:1.6em;
+  margin-top:8px;
+  color:var(--muted);
+  text-align:center;
+  font-weight:700;
+}
+@media(max-width:640px){
+  .falling-board{height:340px}
+  .falling-options{grid-template-columns:1fr}
+  .falling-option{min-height:52px}
+  .falling-word{max-width:44%;font-size:clamp(20px,7vw,30px)}
+}
