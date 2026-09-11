@@ -164,3 +164,37 @@
   .falling-option{font-size:.78rem}
   .falling-hint{font-size:.67rem;max-width:95%;white-space:normal;text-align:center}
 }
+
+
+/* Falling game countdown overlays */
+#vocabNextBtn.vocab-next-removed{display:none !important}
+
+#fallingGame{position:relative}
+.falling-overlay-countdown{
+  position:absolute;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  z-index:50;
+  pointer-events:none;
+  font-weight:900;
+  font-size:clamp(96px,20vw,220px);
+  line-height:1;
+  color:rgba(20,32,58,.62);
+  text-shadow:0 10px 30px rgba(255,255,255,.65);
+}
+.falling-overlay-countdown::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:rgba(255,255,255,.22);
+  backdrop-filter:blur(1px);
+}
+.falling-overlay-countdown > span{
+  position:relative;
+  z-index:1;
+}
+.falling-end-countdown{
+  color:rgba(186,39,56,.50);
+}
