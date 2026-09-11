@@ -4802,7 +4802,7 @@ app.post("/api/vocabulary",requireKey,async(req,res)=>{try{
     throw new Error("Vocabularyの出題形式が不正です。");
   }
 
-  const count=Math.max(5,Math.min(15,Number(req.body.count)||10));
+  const count=Math.max(5,Math.min(30,Number(req.body.count)||10));
 
   // recentWords は「これまで出題した単語」の履歴として扱う。
   // ブラウザ側では最大1000語保存する。
@@ -5024,30 +5024,48 @@ Rules:
 
   const resultByKey=new Map();
 
-  // まず全ターゲットを一括生成。
-  try{
-    const raw=await generateFor(targets);
-    for(let i=0;i<Math.min(raw.length,targets.length);i++){
-      const q=validateExact(raw[i],targets[i]);
-      if(q)resultByKey.set(normalizeWord(targets[i].word),q);
-    }
-  }catch(e){
-    console.warn("Vocabulary batch generation failed:",e.message);
+  // 20〜30問でも一度のAI生成は最大10問に分割する。
+  // これにより長いJSON出力による失敗を減らす。
+  const batchSize=10;
+  const targetBatches=[];
+  for(let i=0;i<targets.length;i+=batchSize){
+    targetBatches.push(targets.slice(i,i+batchSize));
   }
 
-  // 不足分だけを最大3回リトライ。
-  for(let round=0;round<3;round++){
-    const missing=targets.filter(x=>!resultByKey.has(normalizeWord(x.word)));
-    if(!missing.length)break;
+  for(let batchIndex=0;batchIndex<targetBatches.length;batchIndex++){
+    const batchTargets=targetBatches[batchIndex];
 
+    // まずこのバッチをまとめて生成。
     try{
-      const raw=await generateFor(missing);
-      for(let i=0;i<Math.min(raw.length,missing.length);i++){
-        const q=validateExact(raw[i],missing[i]);
-        if(q)resultByKey.set(normalizeWord(missing[i].word),q);
+      const raw=await generateFor(batchTargets);
+      for(let i=0;i<Math.min(raw.length,batchTargets.length);i++){
+        const q=validateExact(raw[i],batchTargets[i]);
+        if(q)resultByKey.set(normalizeWord(batchTargets[i].word),q);
       }
     }catch(e){
-      console.warn(`Vocabulary refill ${round+1} failed:`,e.message);
+      console.warn(`Vocabulary batch ${batchIndex+1}/${targetBatches.length} failed:`,e.message);
+    }
+
+    // このバッチの不足分だけ最大3回リトライ。
+    // missing は常に最大10件なので、どのAI呼び出しも最大10問。
+    for(let round=0;round<3;round++){
+      const missing=batchTargets.filter(
+        x=>!resultByKey.has(normalizeWord(x.word))
+      );
+      if(!missing.length)break;
+
+      try{
+        const raw=await generateFor(missing);
+        for(let i=0;i<Math.min(raw.length,missing.length);i++){
+          const q=validateExact(raw[i],missing[i]);
+          if(q)resultByKey.set(normalizeWord(missing[i].word),q);
+        }
+      }catch(e){
+        console.warn(
+          `Vocabulary batch ${batchIndex+1} refill ${round+1} failed:`,
+          e.message
+        );
+      }
     }
   }
 
@@ -5074,7 +5092,9 @@ Rules:
       unseen_remaining:Math.max(0,unseenPool.length-newTargets.filter(x=>x.source==="new").length),
       review_count:reviewTargets.length,
       new_count:newTargets.filter(x=>x.source==="new").length,
-      recycled_count:newTargets.filter(x=>x.source==="recycle").length
+      recycled_count:newTargets.filter(x=>x.source==="recycle").length,
+      generation_batch_size:10,
+      generation_batches:Math.ceil(count/10)
     }
   });
 
