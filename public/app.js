@@ -531,7 +531,22 @@ function freshLaneState(index){
   };
 }
 
-function startFallingGame(){
+async function runFallingStartCountdown(){
+  const overlay=$("fallingStartCountdown");
+  overlay.classList.remove("hidden");
+
+  for(const n of [3,2,1]){
+    overlay.innerHTML=`<span>${n}</span>`;
+    await new Promise(resolve=>setTimeout(resolve,700));
+  }
+
+  overlay.innerHTML=`<span>GO!</span>`;
+  await new Promise(resolve=>setTimeout(resolve,350));
+  overlay.classList.add("hidden");
+  overlay.innerHTML="";
+}
+
+async function startFallingGame(){
   if(!vocabSet.length)return;
   cancelFallingAnimation();
 
@@ -539,6 +554,8 @@ function startFallingGame(){
   $("vocabSummary").classList.add("hidden");
   $("vocabQuiz").classList.add("hidden");
   $("fallingGame").classList.remove("hidden");
+  $("fallingEndCountdown").classList.add("hidden");
+  $("fallingEndCountdown").innerHTML="";
 
   const durationSec=Math.max(30,Number($("fallingDuration").value)||60);
 
@@ -550,7 +567,7 @@ function startFallingGame(){
     timeouts:0,
     reviewMap:new Map(),
     weakRecordedWords:new Set(),
-    startedAt:performance.now(),
+    startedAt:0,
     durationMs:durationSec*1000,
     finished:false,
     lastTs:0,
@@ -560,8 +577,14 @@ function startFallingGame(){
   resetFallingLane(0,true);
   resetFallingLane(1,true);
   updateFallingHud(durationSec*1000);
-  fallingRafId=requestAnimationFrame(fallingTick);
   $("fallingGame").scrollIntoView({behavior:"smooth",block:"start"});
+
+  await runFallingStartCountdown();
+  if(!fallingGameState || fallingGameState.finished)return;
+
+  fallingGameState.startedAt=performance.now();
+  fallingGameState.lastTs=0;
+  fallingRafId=requestAnimationFrame(fallingTick);
 }
 
 function resetFallingLane(laneIndex,initial=false){
@@ -601,9 +624,20 @@ function resetFallingLane(laneIndex,initial=false){
 
 function updateFallingHud(remainingMs){
   const s=fallingGameState;
-  $("fallingTimer").textContent=`残り ${(Math.max(0,remainingMs)/1000).toFixed(1)}秒`;
+  const safe=Math.max(0,remainingMs);
+  $("fallingTimer").textContent=`残り ${(safe/1000).toFixed(1)}秒`;
   $("fallingScore").textContent=`Score ${s.score}`;
   $("fallingCleared").textContent=`正解 ${s.cleared}`;
+
+  const overlay=$("fallingEndCountdown");
+  if(safe>0 && safe<=3000){
+    const n=Math.ceil(safe/1000);
+    overlay.innerHTML=`<span>${n}</span>`;
+    overlay.classList.remove("hidden");
+  }else{
+    overlay.classList.add("hidden");
+    overlay.innerHTML="";
+  }
 }
 
 function fallingTick(ts){
@@ -758,6 +792,10 @@ function finishFallingGame(){
   s.finished=true;
   cancelFallingAnimation();
 
+  $("fallingStartCountdown").classList.add("hidden");
+  $("fallingEndCountdown").classList.add("hidden");
+  $("fallingStartCountdown").innerHTML="";
+  $("fallingEndCountdown").innerHTML="";
   $("fallingGame").classList.add("hidden");
   $("vocabSummary").classList.remove("hidden");
 
