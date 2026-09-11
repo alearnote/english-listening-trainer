@@ -71,28 +71,48 @@
           <div class="falling-prep-head">
             <div>
               <h2>今回の15語</h2>
-              <p class="muted">まずこの15語を確認してからゲームを開始します。</p>
+              <p class="muted">15語を確認したら、2列同時進行のタイムアタックを開始します。同じ単語もゲーム中に繰り返し登場します。</p>
             </div>
-            <button id="fallingStartBtn" class="primary">ゲーム開始</button>
+            <div class="falling-prep-actions">
+              <label><span>制限時間</span>
+                <select id="fallingDuration">
+                  <option value="60" selected>60秒</option>
+                  <option value="90">90秒</option>
+                  <option value="120">120秒</option>
+                </select>
+              </label>
+              <button id="fallingStartBtn" class="primary">ゲーム開始</button>
+            </div>
           </div>
           <div id="fallingWordList" class="falling-word-list"></div>
         </div>
 
         <div id="fallingGame" class="card hidden">
           <div class="falling-hud">
-            <span id="fallingProgress">1 / 15</span>
+            <span id="fallingTimer">残り 60.0秒</span>
             <span id="fallingScore">Score 0</span>
+            <span id="fallingCleared">正解 0</span>
           </div>
 
-          <div id="fallingBoard" class="falling-board">
-            <div class="falling-lane falling-lane-left"></div>
-            <div class="falling-lane falling-lane-right"></div>
-            <div id="fallingWord" class="falling-word"></div>
-            <div id="fallingHint" class="falling-hint hidden">選択肢を1つ減らしました</div>
-          </div>
+          <div class="falling-dual-grid">
+            <div class="falling-lane-card" data-lane="0">
+              <div class="falling-board" id="fallingBoard0">
+                <div id="fallingWord0" class="falling-word"></div>
+                <div id="fallingHint0" class="falling-hint hidden">選択肢を1つ減らしました</div>
+              </div>
+              <div id="fallingOptions0" class="falling-options"></div>
+              <div id="fallingMessage0" class="falling-message"></div>
+            </div>
 
-          <div id="fallingOptions" class="falling-options"></div>
-          <div id="fallingMessage" class="falling-message"></div>
+            <div class="falling-lane-card" data-lane="1">
+              <div class="falling-board" id="fallingBoard1">
+                <div id="fallingWord1" class="falling-word"></div>
+                <div id="fallingHint1" class="falling-hint hidden">選択肢を1つ減らしました</div>
+              </div>
+              <div id="fallingOptions1" class="falling-options"></div>
+              <div id="fallingMessage1" class="falling-message"></div>
+            </div>
+          </div>
         </div>
 
         <div id="vocabQuiz" class="card hidden">
@@ -211,6 +231,6 @@
       </section>
     </main>
   </div>
-  <script src="/app.js?v=20260911-falling-v11"></script>
+  <script src="/app.js?v=20260911-dual-falling-v12"></script>
 </body>
 </html>
