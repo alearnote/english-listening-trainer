@@ -198,3 +198,8 @@
   backdrop-filter:none;
   -webkit-backdrop-filter:none;
 }
+
+/* v18: larger answer text in Vocabulary Falling Game */
+.falling-option{font-size:clamp(1.15rem,2.1vw,1.45rem);}
+@media(max-width:760px){.falling-option{font-size:clamp(1.05rem,3.6vw,1.28rem);}}
+@media(max-width:480px){.falling-option{font-size:1.02rem;}}
