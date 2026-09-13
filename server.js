@@ -4803,6 +4803,7 @@ app.post("/api/vocabulary",requireKey,async(req,res)=>{try{
   }
 
   const count=Math.max(5,Math.min(30,Number(req.body.count)||10));
+  const weakFocus=req.body.weakFocus===true;
 
   // recentWords は「これまで出題した単語」の履歴として扱う。
   // ブラウザ側では最大1000語保存する。
@@ -4827,7 +4828,8 @@ app.post("/api/vocabulary",requireKey,async(req,res)=>{try{
   const masteredSet=new Set(masteredWords.map(normalizeWord));
   const recentCooldownSet=new Set(seenWords.slice(-30).map(normalizeWord));
 
-  // 苦手復習は約20%。直近30語に出た苦手語は少し休ませる。
+  // 通常時は苦手復習を約20%。苦手対策ONでは、苦手語を問題数いっぱいまで優先する。
+  // 苦手対策ONでは直近出題済みでも復習対象にできる。
   const eligibleWeak=weakWords
     .filter(x=>{
       const raw=String(x.word||"").trim();
@@ -4835,11 +4837,13 @@ app.post("/api/vocabulary",requireKey,async(req,res)=>{try{
       return /^[A-Za-z][A-Za-z' -]*$/.test(raw) &&
         key &&
         !masteredSet.has(key) &&
-        !recentCooldownSet.has(key);
+        (weakFocus || !recentCooldownSet.has(key));
     })
     .sort((a,b)=>(b.count||0)-(a.count||0));
 
-  const desiredReview=Math.min(Math.round(count*.2),eligibleWeak.length);
+  const desiredReview=weakFocus
+    ? Math.min(count,eligibleWeak.length)
+    : Math.min(Math.round(count*.2),eligibleWeak.length);
   const reviewTargets=eligibleWeak.slice(0,desiredReview).map(x=>({
     word:x.word,
     source:"review",
@@ -8322,6 +8326,10 @@ app.post("/api/writing", requireKey, async(req,res)=>{
     const recentGrammarIds = Array.isArray(req.body.recentGrammarIds)
       ? req.body.recentGrammarIds.map(x=>String(x||"").trim()).filter(Boolean).slice(-500)
       : [];
+    const weakFocus = req.body.weakFocus===true;
+    const weakGrammarIds = Array.isArray(req.body.weakGrammarIds)
+      ? req.body.weakGrammarIds.map(x=>String(x||"").trim()).filter(Boolean).slice(0,100)
+      : [];
 
     const pool = Array.isArray(WRITING_GRAMMAR_POOLS[level])
       ? WRITING_GRAMMAR_POOLS[level]
@@ -8330,22 +8338,42 @@ app.post("/api/writing", requireKey, async(req,res)=>{
     const seenSet = new Set(recentGrammarIds);
     const cooldownSet = new Set(recentGrammarIds.slice(-30));
 
-    // Vocabularyと同じ考え方で、まず未出題文法を優先。
-    let candidates = pool.filter(g=>!seenSet.has(g.id));
-    if(candidates.length < count){
-      // 一巡後のみ再利用。ただし直近30項目は避ける。
-      candidates = [
-        ...candidates,
-        ...pool.filter(g=>seenSet.has(g.id) && !cooldownSet.has(g.id))
+    // 苦手対策ONでは、過去に間違えた文法を最優先。
+    // 足りない分だけ通常の「未出題優先」ロジックで補う。
+    const weakIdSet=new Set(weakGrammarIds);
+    let weakTargets=weakFocus
+      ? pool.filter(g=>weakIdSet.has(g.id))
+      : [];
+
+    // weakGrammarIds はクライアント側で誤答回数順なので、その順序を維持。
+    if(weakFocus){
+      const order=new Map(weakGrammarIds.map((id,i)=>[id,i]));
+      weakTargets.sort((a,b)=>(order.get(a.id)??9999)-(order.get(b.id)??9999));
+      weakTargets=weakTargets.slice(0,count);
+    }
+
+    const selectedWeakIds=new Set(weakTargets.map(g=>g.id));
+    let normalCandidates = pool.filter(g=>!selectedWeakIds.has(g.id) && !seenSet.has(g.id));
+    if(normalCandidates.length < count-weakTargets.length){
+      normalCandidates = [
+        ...normalCandidates,
+        ...pool.filter(g=>
+          !selectedWeakIds.has(g.id) &&
+          seenSet.has(g.id) &&
+          !cooldownSet.has(g.id)
+        )
       ];
     }
 
-    // シャッフルして今回のターゲット文法を決定
-    for(let i=candidates.length-1;i>0;i--){
+    for(let i=normalCandidates.length-1;i>0;i--){
       const j=Math.floor(Math.random()*(i+1));
-      [candidates[i],candidates[j]]=[candidates[j],candidates[i]];
+      [normalCandidates[i],normalCandidates[j]]=[normalCandidates[j],normalCandidates[i]];
     }
-    const targets=candidates.slice(0,count);
+
+    const targets=[
+      ...weakTargets,
+      ...normalCandidates.slice(0,count-weakTargets.length)
+    ];
     if(targets.length<count){
       throw new Error(`利用できる文法プールが不足しています。${targets.length}/${count}項目`);
     }
