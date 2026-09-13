@@ -27,6 +27,7 @@ const LISTENING_HISTORY_LIMIT = 20;
 const VOCAB_MASTERY_KEY = "englishTrainerV3VocabMastery";
 const WRITING_GRAMMAR_HISTORY_KEY = "englishTrainerV9WritingGrammarHistory";
 const WRITING_GRAMMAR_HISTORY_LIMIT = 500;
+const WRITING_GRAMMAR_MASTERY_KEY = "englishTrainerV19WritingGrammarMastery";
 
 function escapeHtml(s) {
   return String(s ?? "")
@@ -928,8 +929,9 @@ async function generateVocab(){
       mode:$("vocabMode").value,
       count:falling?FALLING_GAME_COUNT:Number($("vocabCount").value),
       recentWords:loadVocabHistory(),
-      weakWords:getWeakWordsForReview(),
-      masteredWords:getMasteredWords()
+      weakWords:getWeakWordsForReview(100),
+      masteredWords:getMasteredWords(),
+      weakFocus:$("vocabWeakFocus").value==="on"
     });
 
     vocabSet=data.questions||[];
@@ -1072,6 +1074,63 @@ function finishVocab(){
 
 
 
+function loadWritingGrammarMastery(){
+  try{
+    const data=JSON.parse(localStorage.getItem(WRITING_GRAMMAR_MASTERY_KEY)||"{}");
+    return data && typeof data==="object" && !Array.isArray(data) ? data : {};
+  }catch{return {};}
+}
+
+function saveWritingGrammarMastery(data){
+  localStorage.setItem(WRITING_GRAMMAR_MASTERY_KEY,JSON.stringify(data||{}));
+}
+
+function recordWritingGrammarWrong(q){
+  const id=String(q?.grammar_id||"").trim();
+  if(!id)return;
+  const data=loadWritingGrammarMastery();
+  const old=data[id]||{
+    grammar_id:id,
+    grammar_name_ja:String(q?.grammar_name_ja||""),
+    grammar_pattern:String(q?.grammar_pattern||""),
+    wrongCount:0,
+    correctStreak:0,
+    mastered:false
+  };
+  old.grammar_name_ja=String(q?.grammar_name_ja||old.grammar_name_ja||"");
+  old.grammar_pattern=String(q?.grammar_pattern||old.grammar_pattern||"");
+  old.wrongCount=(old.wrongCount||0)+1;
+  old.correctStreak=0;
+  old.mastered=false;
+  data[id]=old;
+  saveWritingGrammarMastery(data);
+}
+
+function recordWritingGrammarCorrect(q){
+  const id=String(q?.grammar_id||"").trim();
+  if(!id)return false;
+  const data=loadWritingGrammarMastery();
+  const old=data[id];
+  if(!old || old.mastered || !(old.wrongCount>0))return false;
+  old.correctStreak=(old.correctStreak||0)+1;
+  if(old.correctStreak>=3){
+    old.correctStreak=3;
+    old.mastered=true;
+  }
+  data[id]=old;
+  saveWritingGrammarMastery(data);
+  return Boolean(old.mastered);
+}
+
+function getWeakGrammarIds(limit=100){
+  return Object.values(loadWritingGrammarMastery())
+    .filter(g=>g && !g.mastered && (g.wrongCount||0)>0)
+    .sort((a,b)=>(b.wrongCount||0)-(a.wrongCount||0))
+    .slice(0,limit)
+    .map(g=>g.grammar_id)
+    .filter(Boolean);
+}
+
 function loadWritingGrammarHistory(){
   try{
     const data=JSON.parse(localStorage.getItem(WRITING_GRAMMAR_HISTORY_KEY)||"[]");
@@ -1131,7 +1190,9 @@ async function generateWriting(){
       ...commonSettings(),
       count,
       mode,
-      recentGrammarIds: loadWritingGrammarHistory()
+      recentGrammarIds: loadWritingGrammarHistory(),
+      weakFocus: $("writingWeakFocus").value==="on",
+      weakGrammarIds: getWeakGrammarIds(100)
     });
     writingSet = Array.isArray(data.questions) ? data.questions : [];
     if(!writingSet.length) throw new Error("翻訳問題を生成できませんでした。");
@@ -1180,8 +1241,13 @@ function finishWritingAnswer({good, result=null, gaveUp=false}){
   const q = writingSet[writingIndex];
   writingAnswered = true;
 
-  if(good) writingCorrect++;
-  else writingMistakes.push({q, result, gaveUp});
+  if(good){
+    writingCorrect++;
+    recordWritingGrammarCorrect(q);
+  }else{
+    writingMistakes.push({q, result, gaveUp});
+    recordWritingGrammarWrong(q);
+  }
 
   $("writingAnswer").disabled = true;
   $("writingSubmitBtn").disabled = true;
