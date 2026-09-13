@@ -60,6 +60,7 @@
             <label><span>出題形式</span><select id="vocabMode"><option value="en-ja">英 → 日</option><option value="ja-en">日 → 英</option><option value="blank">英文穴埋め</option></select></label>
             <label><span>回答方式</span><select id="vocabAnswerMode"><option value="choice">4択</option><option value="input" selected>入力回答（AI判定）</option><option value="falling">落下ゲーム（英↔日・15語）</option></select></label>
             <label><span>問題数</span><select id="vocabCount"><option value="5">5問</option><option value="10" selected>10問</option><option value="15">15問</option><option value="20">20問</option><option value="30">30問</option></select></label>
+            <label><span>苦手対策</span><select id="vocabWeakFocus"><option value="off" selected>OFF</option><option value="on">ON</option></select></label>
           </div>
           <button id="newVocabBtn" class="primary">＋ 10問作る</button>
         </div>
@@ -136,6 +137,7 @@
           <div class="settings-grid">
             <label><span>出題形式</span><select id="writingMode"><option value="ja-en" selected>日本語 → 英語</option><option value="en-ja">英語 → 日本語</option></select></label>
             <label><span>問題数</span><select id="writingCount"><option value="5" selected>5問</option><option value="10">10問</option></select></label>
+            <label><span>苦手対策</span><select id="writingWeakFocus"><option value="off" selected>OFF</option><option value="on">ON</option></select></label>
           </div>
           <button id="newWritingBtn" class="primary">＋ 翻訳練習を始める</button>
         </div>
@@ -229,6 +231,6 @@
       </section>
     </main>
   </div>
-  <script src="/app.js?v=20260911-vocab-next-v17"></script>
+  <script src="/app.js?v=20260913-weak-focus-v19"></script>
 </body>
 </html>
