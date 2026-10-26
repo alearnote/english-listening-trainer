@@ -203,3 +203,5 @@
 .falling-option{font-size:clamp(1.15rem,2.1vw,1.45rem);}
 @media(max-width:760px){.falling-option{font-size:clamp(1.05rem,3.6vw,1.28rem);}}
 @media(max-width:480px){.falling-option{font-size:1.02rem;}}
+
+.toeic-q{padding:14px 0;border-top:1px solid #ccc}.toeic-option{display:block;width:100%;text-align:left;padding:11px;margin:7px 0;border:1px solid #bbb;border-radius:8px}.toeic-option.chosen{background:#dbeafe}.toeic-explanation{padding:10px;background:rgba(120,140,160,.1)}
