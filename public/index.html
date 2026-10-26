@@ -17,7 +17,7 @@
       <button class="tab" data-tab="vocabulary">🧠 Vocabulary</button>
       <button class="tab" data-tab="writing">✍️ Writing</button>
       <button class="tab" data-tab="reading">📖 Reading</button>
-      <button class="tab" data-tab="dictionary">📘 Dictionary</button>
+      <button class="tab" data-tab="toeic">📝 TOEIC</button><button class="tab" data-tab="dictionary">📘 Dictionary</button>
       <button class="tab" data-tab="progress">📊 Progress</button>
     </nav>
 
@@ -182,7 +182,7 @@
       </section>
 
       
-      <section id="tab-dictionary" class="tab-page hidden">
+      <section id="tab-toeic" class="tab-page hidden"><div class="card"><h2>TOEIC L&amp;R Practice</h2><p>本番形式を参考にしたオリジナル問題です（公式問題ではありません）。</p><div class="settings-grid"><label>Part<select id="toeicPart"><option value="1">1 写真描写</option><option value="2">2 応答</option><option value="3">3 会話</option><option value="4">4 説明文</option><option value="5" selected>5 短文穴埋め</option><option value="6">6 長文穴埋め</option><option value="7">7 読解</option></select></label></div><label id="toeicPhotoWrap" class="hidden">Part 1用写真<input type="file" id="toeicPhoto" accept="image/png,image/jpeg,image/webp"></label><button id="toeicNew" class="primary">問題を生成</button><p id="toeicStatus"></p></div><div id="toeicQuiz" class="card hidden"><h2 id="toeicTitle"></h2><img id="toeicImage" class="hidden" style="max-width:100%;max-height:320px" alt="写真"><div id="toeicText" style="white-space:pre-wrap;line-height:1.7"></div><button id="toeicPlay" class="hidden">▶ 音声再生</button><audio id="toeicAudio"></audio><div id="toeicQuestions"></div><button id="toeicCheck" class="primary">答え合わせ</button><div id="toeicResult" class="hidden"></div></div></section><section id="tab-dictionary" class="tab-page hidden">
         <div class="card">
           <h2>📘 Dictionary</h2>
           <p class="muted">日本語または英語を入力すると、自動判定して和英・英和で表示します。</p>
@@ -231,6 +231,6 @@
       </section>
     </main>
   </div>
-  <script src="/app.js?v=20261026-choice-shuffle-v20"></script>
+  <script src="/app.js?v=toeic-v21"></script>
 </body>
 </html>
