@@ -911,6 +911,22 @@ $("vocabMode").addEventListener("change", syncVocabPronunciationButton);
 $("vocabCount").addEventListener("change",()=>{if($("vocabAnswerMode").value!=="falling")$("newVocabBtn").textContent=`＋ ${$("vocabCount").value}問作る`;});
 $("newVocabBtn").addEventListener("click",generateVocab);$("vocabAgainBtn").addEventListener("click",generateVocab);
 
+async // Randomize the four choices and remap the correct answer index together.
+// This is applied to the regular 4-choice mode, not the falling game.
+function shuffleVocabChoiceAnswers(questions){
+  return questions.map(q=>{
+    if(!Array.isArray(q.options) || q.options.length!==4) return q;
+    const correct=Number(q.answer_index);
+    if(!Number.isInteger(correct) || correct<0 || correct>=4) return q;
+    const order=[0,1,2,3];
+    for(let i=order.length-1;i>0;i--){
+      const j=Math.floor(Math.random()*(i+1));
+      [order[i],order[j]]=[order[j],order[i]];
+    }
+    return {...q,options:order.map(i=>q.options[i]),answer_index:order.indexOf(correct)};
+  });
+}
+
 async function generateVocab(){
   const btn=$("newVocabBtn");
   const falling=$("vocabAnswerMode").value==="falling";
@@ -935,6 +951,7 @@ async function generateVocab(){
     });
 
     vocabSet=data.questions||[];
+    if(!falling && $("vocabAnswerMode").value==="choice") vocabSet=shuffleVocabChoiceAnswers(vocabSet);
     if(!vocabSet.length)throw new Error("問題を生成できませんでした。");
     rememberVocabWords(vocabSet.map(q=>q.word));
     vocabIndex=0;
