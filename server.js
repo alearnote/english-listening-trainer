@@ -8635,6 +8635,38 @@ async function toeicGenerateJson(prompt,photo){
   if(!r.ok)throw Error(data.error?.message||`AI API error (${r.status})`);
   return parseJson(data.choices?.[0]?.message?.content);
 }
+// TOEIC Part 5: independent semantic/grammar review after generation.
+// Conservative: reject anything ambiguous or unnatural; never auto-correct a flawed question.
+async function validateToeicPart5(questions){
+  const items=questions.map((q,i)=>({
+    id:i, sentence:String(q.question||""), options:q.options,
+    proposed_correct_index:q.answer_index,
+    proposed_explanation_ja:String(q.explanation_ja||""),
+    proposed_translation_ja:String(q.translation_ja||"")
+  }));
+  const prompt=`You are a strict independent editor of TOEIC-style Part 5 questions. Review each item independently; do not trust the proposed answer or explanation.
+For each question, substitute EACH of the four options into the blank and check grammar, natural usage, collocations, semantics, and plausible business contexts.
+REJECT if the proposed answer is ungrammatical, if another option is also grammatical and natural in a reasonable interpretation, if context is insufficient to choose one unique answer, or if wording is awkward. Be especially strict about conjunctions vs prepositions (because vs because of, although vs despite, while vs during), verb agreement, and tense.
+For valid items, provide a Japanese translation of the entire sentence with the proposed correct option inserted, plus a concise Japanese explanation of why it alone is correct and why the distractors fail. Never silently repair or alter the sentence/options. If uncertain, reject.
+Return JSON ONLY: {"reviews":[{"id":0,"valid":true,"explanation_ja":"...","translation_ja":"..."}]} with exactly one review per item.
+ITEMS: ${JSON.stringify(items)}`;
+  const review=await toeicGenerateJson(prompt,null);
+  if(!Array.isArray(review.reviews)||review.reviews.length!==items.length)throw Error("検証結果が不完全です。");
+  const seen=new Set();
+  return review.reviews.map((r,i)=>{
+    if(r.id!==i||seen.has(r.id))throw Error("検証結果の対応が不正です。");
+    seen.add(r.id);
+    return {valid:r.valid===true,explanation_ja:String(r.explanation_ja||""),translation_ja:String(r.translation_ja||"")};
+  });
+}
+function toeicPart5StructureValid(q){
+  if(!q||typeof q.question!=="string"||(q.question.match(/_____/g)||[]).length!==1)return false;
+  if(!Array.isArray(q.options)||q.options.length!==4||q.options.some(x=>typeof x!=="string"||!x.trim()))return false;
+  if(new Set(q.options.map(x=>x.trim().toLowerCase())).size!==4)return false;
+  const n=Number(q.answer_index);
+  return Number.isInteger(n)&&n>=0&&n<4&&q.question.length<500;
+}
+
 app.post("/api/toeic",requireKey,async(req,res)=>{
   try{
     const part=Number(req.body.part);
@@ -8643,12 +8675,30 @@ app.post("/api/toeic",requireKey,async(req,res)=>{
     const count=[0,1,1,3,3,4,4,4][part];
     const photo=String(req.body.photo||"");
     if(part===1 && (!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(photo)||photo.length>4100000))return res.status(400).json({error:"3MB以下の写真を選択してください。"});
-    const prompt=`Create ORIGINAL TOEIC L&R-style practice (not ETS official). Part ${part}: ${specs[part]}. CEFR ${String(req.body.level||"B1")}; topic ${String(req.body.topic||"Random")}. Exactly ${count} questions. Part 2: exactly 3 answer options; other parts: 4. Output JSON only with heading, passage, audio_script, questions. Each question: {"question":"English question","options":["English choice"],"answer_index":0,"explanation_ja":"日本語の簡潔な解説","translation_ja":"Part 5のみ、正答を補った完成英文の自然な日本語訳"}. For Parts 1-4 audio_script contains the English speech; for Parts 5-7 passage contains reading text as needed. For Part 5 each question must contain _____; for EACH Part 5 question, include a field translation_ja containing a natural Japanese translation of the COMPLETE English sentence after replacing _____ with the correct answer choice (not a translation of the blank alone). For Part 6 include numbered blanks in passage. All correct answers must be supported by the stimulus. No markdown.`;
+    const part5Rules=part===5?`PART 5 STRICT QUALITY RULES:
+- Every blank has EXACTLY ONE grammatically correct, natural answer in context.
+- Test all four substitutions yourself. Do not create questions where two options could work.
+- Do not confuse conjunctions with prepositions: because requires a clause, because of takes a noun phrase; although takes a clause, despite takes a noun phrase; during takes a noun phrase, while usually takes a clause.
+- The completed sentence must be idiomatic workplace English and the explanation must identify the exact grammar or vocabulary distinction.
+- Include translation_ja for the COMPLETE sentence with the correct answer inserted.
+- Avoid ambiguous time references and incomplete context.`:"";
+    const prompt=`Create ORIGINAL TOEIC L&R-style practice (not ETS official). Part ${part}: ${specs[part]}. CEFR ${String(req.body.level||"B1")}; topic ${String(req.body.topic||"Random")}. Exactly ${count} questions. Part 2: exactly 3 answer options; other parts: 4. Output JSON only with heading, passage, audio_script, questions. Each question: {"question":"English question","options":["English choice"],"answer_index":0,"explanation_ja":"日本語の簡潔な解説","translation_ja":"Part 5のみ、正答を補った完成英文の自然な日本語訳"}. For Parts 1-4 audio_script contains the English speech; for Parts 5-7 passage contains reading text as needed. For Part 5 each question must contain _____. For Part 6 include numbered blanks in passage. All correct answers must be supported by the stimulus. ${part5Rules} No markdown.`;
     let d,last;
-    for(let attempt=0;attempt<3;attempt++){
+    for(let attempt=0;attempt<(part===5?4:3);attempt++){
       try{
         d=await toeicGenerateJson(prompt,part===1?photo:null);
         if(!Array.isArray(d.questions)||d.questions.length!==count)throw Error("生成された問題数が一致しません。");
+        if(part===5){
+          if(!d.questions.every(toeicPart5StructureValid))throw Error("Part 5の問題形式が不適切です。");
+          const reviews=await validateToeicPart5(d.questions);
+          if(reviews.some(r=>!r.valid||!r.explanation_ja.trim()||!r.translation_ja.trim())){
+            throw Error("Part 5に文法的な誤り・複数正解・不自然な英文が検出されました。");
+          }
+          d.questions.forEach((q,i)=>{
+            q.explanation_ja=reviews[i].explanation_ja;
+            q.translation_ja=reviews[i].translation_ja;
+          });
+        }
         for(const q of d.questions){
           const len=part===2?3:4;
           q.answer_index=Number(q.answer_index);
