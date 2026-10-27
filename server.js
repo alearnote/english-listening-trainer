@@ -8659,6 +8659,70 @@ ITEMS: ${JSON.stringify(items)}`;
     return {valid:r.valid===true,explanation_ja:String(r.explanation_ja||""),translation_ja:String(r.translation_ja||"")};
   });
 }
+// Independent editorial review for Parts 1–4 and 6–7.
+// Review each item separately and regenerate only rejected questions when possible.
+function toeicQuestionShape(q,part){
+  const count=part===2?3:4;
+  return q && typeof q.question==='string' && q.question.trim().length>0 &&
+    Array.isArray(q.options) && q.options.length===count &&
+    q.options.every(x=>typeof x==='string' && x.trim()) &&
+    new Set(q.options.map(x=>x.trim().toLowerCase())).size===count &&
+    Number.isInteger(Number(q.answer_index)) && Number(q.answer_index)>=0 && Number(q.answer_index)<count;
+}
+async function reviewToeicOtherPart(part,doc,photo){
+  const source={part,heading:doc.heading||'',passage:doc.passage||'',audio_script:doc.audio_script||''};
+  const reviews=[];
+  for(let i=0;i<doc.questions.length;i++){
+    const q=doc.questions[i];
+    const instructions=part===1?'Verify the proposed correct photo description is visibly supported by the attached photo, and every distractor is demonstrably false or unsupported. Do not invent unseen details.':
+      part===2?'Check the spoken question-response relationship: only one response must be conversationally appropriate, including indirect replies. Reject plausible alternative replies.':
+      part===3||part===4?'Check the answer is supported by the AUDIO SCRIPT, including inference and speaker intent; other options must not also be supported. Cite an exact short supporting quote from the script.':
+      part===6?'Check the passage and numbered blank context, grammar, discourse coherence, and that exactly one option fits the specified blank. Reject if blank reference is unclear or alternatives work. Cite supporting text.':
+      'Check the answer is directly supported or safely inferred from the passage, not outside knowledge. Cite an exact short supporting quote. Reject ambiguous alternatives.';
+    const prompt=`Independent TOEIC-style editorial verification. You are NOT the question writer. Review only ONE item. ${instructions}
+Check grammatical correctness, natural language, one unambiguous best answer, consistency with the supplied stimulus, and Japanese explanation. If uncertain reject. Never silently change options or the answer.
+SOURCE: ${JSON.stringify(source)}
+ITEM: ${JSON.stringify({question:q.question,options:q.options,answer_index:q.answer_index,explanation_ja:q.explanation_ja})}
+Return JSON only: {"valid":true,"reason":"brief reason for rejection if invalid","evidence":"exact short support quote or description of visible evidence","explanation_ja":"accurate concise Japanese explanation"}.`;
+    const r=await toeicGenerateJson(prompt,part===1?photo:null);
+    reviews.push({valid:r.valid===true && typeof r.explanation_ja==='string' && r.explanation_ja.trim().length>0 &&
+      (part===1||part===2||typeof r.evidence==='string'&&r.evidence.trim().length>0),
+      reason:String(r.reason||''),explanation_ja:String(r.explanation_ja||'')});
+  }
+  return reviews;
+}
+async function regenerateToeicItem(part,doc,index,photo){
+  const old=doc.questions[index];
+  const prompt=`Replace ONLY this failed TOEIC-style Part ${part} question. Keep the source material (passage/audio_script/photo) unchanged and do not rewrite it. Create one new question that has exactly ${part===2?3:4} unique options and exactly one best answer. For Part 6, target the SAME numbered blank as the failed question. For Part 1 the answer must be visibly true of the supplied photo. For Part 2 the question should be a natural spoken prompt with one appropriate reply. For Parts 3,4,7 the answer must be directly supported by the source. Provide a Japanese explanation. Avoid the failed question and its ambiguity.
+SOURCE: ${JSON.stringify({passage:doc.passage||'',audio_script:doc.audio_script||'',heading:doc.heading||''})}
+FAILED ITEM: ${JSON.stringify(old)}
+Return JSON only: {"question":"...","options":["..."],"answer_index":0,"explanation_ja":"..."}.`;
+  return toeicGenerateJson(prompt,part===1?photo:null);
+}
+async function validateAndRepairToeicOtherPart(part,doc,photo){
+  if(!doc.questions.every(q=>toeicQuestionShape(q,part)))throw Error(`Part ${part}の選択肢形式が不正です。`);
+  if([3,4].includes(part) && !String(doc.audio_script||'').trim())throw Error('音声原稿がありません。');
+  if([6,7].includes(part) && !String(doc.passage||'').trim())throw Error('読解本文がありません。');
+  // Per-item retries: do not discard good questions when one fails.
+  for(let round=0;round<3;round++){
+    const reviews=await reviewToeicOtherPart(part,doc,photo);
+    const bad=[];
+    reviews.forEach((r,i)=>{
+      if(r.valid)doc.questions[i].explanation_ja=r.explanation_ja;
+      else bad.push(i);
+    });
+    if(!bad.length)return doc;
+    if(round===2)throw Error(`Part ${part}の事後検証で${bad.length}問が不合格でした。`);
+    for(const i of bad){
+      try{
+        const replacement=await regenerateToeicItem(part,doc,i,photo);
+        if(toeicQuestionShape(replacement,part))doc.questions[i]=replacement;
+      }catch(e){console.warn(`TOEIC Part ${part} item ${i+1} repair failed:`,e.message);}
+    }
+  }
+  return doc;
+}
+
 function toeicPart5StructureValid(q){
   if(!q||typeof q.question!=="string"||(q.question.match(/_____/g)||[]).length!==1)return false;
   if(!Array.isArray(q.options)||q.options.length!==4||q.options.some(x=>typeof x!=="string"||!x.trim()))return false;
@@ -8718,6 +8782,9 @@ app.post("/api/toeic",requireKey,async(req,res)=>{
             q.explanation_ja=reviews[i].explanation_ja;
             q.translation_ja=reviews[i].translation_ja;
           });
+        }
+        if(part!==5){
+          d=await validateAndRepairToeicOtherPart(part,d,part===1?photo:null);
         }
         for(const q of d.questions){
           const len=part===2?3:4;
