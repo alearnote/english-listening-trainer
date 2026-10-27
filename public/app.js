@@ -976,6 +976,7 @@ async function generateVocab(){
 }
 
 function renderVocabQuestion(){
+  syncVocabNextButtonForMode();
   $("fallingPrep").classList.add("hidden");$("fallingGame").classList.add("hidden");
   syncVocabNextButtonForMode();
   const q=vocabSet[vocabIndex],total=vocabSet.length,answerMode=$("vocabAnswerMode").value;vocabAnswered=false;
@@ -1001,6 +1002,7 @@ function finishVocabAnswer({good,q,feedbackText="",acceptedAnswer="",actualMeani
   box.className=`feedback-box ${good?"good":"bad"}`;
   box.innerHTML=`<strong>${good?"✓ Correct!":"✕ Incorrect"}</strong><p><b>${escapeHtml(q.word||"")}</b>${q.meaning_ja?` — ${escapeHtml(q.meaning_ja)}`:""}</p>${q.context?`<div class="vocab-example"><strong>例文</strong><p>${escapeHtml(q.context)}</p></div>`:""}${feedbackText?`<p>${escapeHtml(feedbackText)}</p>`:""}${!good&&actualMeaning?`<p><strong>あなたの回答「${escapeHtml(actualMeaning.answer||"")}」の意味:</strong> ${escapeHtml(actualMeaning.meaning||"")}</p>`:""}${acceptedAnswer?`<p><strong>模範回答:</strong> ${escapeHtml(acceptedAnswer)}</p>`:""}${masteredNow?`<p><strong>✓ 苦手卒業:</strong> 3回連続で正解したため、今後この単語は出題しません。</p>`:""}`;
   box.classList.remove("hidden");
+  $("vocabNextBtn").disabled=false;
   $("vocabNextBtn").classList.remove("hidden");
   setTimeout(()=>$("vocabNextBtn").scrollIntoView({behavior:"smooth",block:"end"}),100);
 }
@@ -1553,6 +1555,8 @@ function currentTabPage(){
 
 window.addEventListener("keydown", e => {
   if(e.key !== "Enter") return;
+  // Buttons retain native keyboard activation; avoid double clicks.
+  if(e.target?.closest?.("button")) return;
 
   const page = currentTabPage();
   if(!page) return;
