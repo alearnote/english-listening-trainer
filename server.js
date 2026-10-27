@@ -8667,6 +8667,19 @@ function toeicPart5StructureValid(q){
   return Number.isInteger(n)&&n>=0&&n<4&&q.question.length<500;
 }
 
+const TOEIC_PART5_SKILLS=[
+  "word form: noun/adjective/adverb/verb", "verb tense and time expressions", "subject-verb agreement", "active/passive voice", "prepositions and collocations", "conjunctions versus prepositions", "relative clauses and pronouns", "modals and infinitives", "gerunds versus infinitives", "comparatives and superlatives", "business vocabulary in context", "participles and modifiers", "conditional constructions", "determiners and quantifiers", "phrasal verbs and fixed expressions", "parallel structure and coordination"
+];
+const TOEIC_PART5_SCENES=["recruitment and staffing","shipping and logistics","customer support","product launches","financial reports","office maintenance","travel arrangements","training sessions","contracts and purchasing","marketing campaigns","IT support","event planning","manufacturing","retail sales","health and safety","supplier communications"];
+function toeicPart5Plan(recent=[]){
+  const past=new Set(recent.map(x=>String(x||'').toLowerCase()));
+  const pool=TOEIC_PART5_SKILLS.map((skill,i)=>({skill,scene:TOEIC_PART5_SCENES[(i*7+3)%TOEIC_PART5_SCENES.length]}));
+  for(let i=pool.length-1;i>0;i--){const k=Math.floor(Math.random()*(i+1));[pool[i],pool[k]]=[pool[k],pool[i]];}
+  const selected=[];
+  for(const p of pool){if(selected.length===4)break;if(!past.has(p.skill.toLowerCase()))selected.push(p);}
+  for(const p of pool){if(selected.length===4)break;if(!selected.some(x=>x.skill===p.skill))selected.push(p);}
+  return selected;
+}
 app.post("/api/toeic",requireKey,async(req,res)=>{
   try{
     const part=Number(req.body.part);
@@ -8675,6 +8688,9 @@ app.post("/api/toeic",requireKey,async(req,res)=>{
     const count=[0,1,1,3,3,4,4,4][part];
     const photo=String(req.body.photo||"");
     if(part===1 && (!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(photo)||photo.length>4100000))return res.status(400).json({error:"3MB以下の写真を選択してください。"});
+    const recentPart5Skills=Array.isArray(req.body.recentPart5Skills)?req.body.recentPart5Skills.slice(-24):[];
+    const part5Plan=part===5?toeicPart5Plan(recentPart5Skills):[];
+    const part5PlanRules=part===5?`MANDATORY DIVERSITY PLAN: Write question 1-4 in exactly this order, one question per distinct skill and scene. Do not repeat the same sentence template or grammatical target. For each question return skill matching its assigned skill verbatim.\n${part5Plan.map((p,i)=>`${i+1}. skill: ${p.skill}; business scene: ${p.scene}`).join('\n')}\nRecent prompts to avoid: ${JSON.stringify(Array.isArray(req.body.recentPart5Prompts)?req.body.recentPart5Prompts.slice(-16):[])}\n`:"";
     const part5Rules=part===5?`PART 5 STRICT QUALITY RULES:
 - Every blank has EXACTLY ONE grammatically correct, natural answer in context.
 - Test all four substitutions yourself. Do not create questions where two options could work.
@@ -8682,7 +8698,7 @@ app.post("/api/toeic",requireKey,async(req,res)=>{
 - The completed sentence must be idiomatic workplace English and the explanation must identify the exact grammar or vocabulary distinction.
 - Include translation_ja for the COMPLETE sentence with the correct answer inserted.
 - Avoid ambiguous time references and incomplete context.`:"";
-    const prompt=`Create ORIGINAL TOEIC L&R-style practice (not ETS official). Part ${part}: ${specs[part]}. CEFR ${String(req.body.level||"B1")}; topic ${String(req.body.topic||"Random")}. Exactly ${count} questions. Part 2: exactly 3 answer options; other parts: 4. Output JSON only with heading, passage, audio_script, questions. Each question: {"question":"English question","options":["English choice"],"answer_index":0,"explanation_ja":"日本語の簡潔な解説","translation_ja":"Part 5のみ、正答を補った完成英文の自然な日本語訳"}. For Parts 1-4 audio_script contains the English speech; for Parts 5-7 passage contains reading text as needed. For Part 5 each question must contain _____. For Part 6 include numbered blanks in passage. All correct answers must be supported by the stimulus. ${part5Rules} No markdown.`;
+    const prompt=`Create ORIGINAL TOEIC L&R-style practice (not ETS official). Part ${part}: ${specs[part]}. CEFR ${String(req.body.level||"B1")}; topic ${String(req.body.topic||"Random")}. Exactly ${count} questions. Part 2: exactly 3 answer options; other parts: 4. Output JSON only with heading, passage, audio_script, questions. Each question: {"question":"English question","options":["English choice"],"answer_index":0,"explanation_ja":"日本語の簡潔な解説","translation_ja":"Part 5のみ、正答を補った完成英文の自然な日本語訳"}. For Parts 1-4 audio_script contains the English speech; for Parts 5-7 passage contains reading text as needed. For Part 5 each question must contain _____. For Part 6 include numbered blanks in passage. All correct answers must be supported by the stimulus. ${part5PlanRules} ${part5Rules} No markdown.`;
     let d,last;
     for(let attempt=0;attempt<(part===5?4:3);attempt++){
       try{
@@ -8690,6 +8706,9 @@ app.post("/api/toeic",requireKey,async(req,res)=>{
         if(!Array.isArray(d.questions)||d.questions.length!==count)throw Error("生成された問題数が一致しません。");
         if(part===5){
           if(!d.questions.every(toeicPart5StructureValid))throw Error("Part 5の問題形式が不適切です。");
+          if(!d.questions.every((q,i)=>String(q.skill||"").trim()===part5Plan[i].skill))throw Error("Part 5の出題分野が指定と一致しません。");
+          const normalized=d.questions.map(q=>q.question.toLowerCase().replace(/[^a-z ]/g," ").trim());
+          if(new Set(normalized).size!==normalized.length)throw Error("類似問題が重複しています。");
           const reviews=await validateToeicPart5(d.questions);
           if(reviews.some(r=>!r.valid||!r.explanation_ja.trim()||!r.translation_ja.trim())){
             throw Error("Part 5に文法的な誤り・複数正解・不自然な英文が検出されました。");
@@ -8712,7 +8731,7 @@ app.post("/api/toeic",requireKey,async(req,res)=>{
     }
     if(!d)throw last||Error("問題生成に失敗しました。");
     if(part===1)d.audio_script=d.questions[0].options.map((x,i)=>`${String.fromCharCode(65+i)}. ${x}`).join(". ");
-    res.json({part,heading:String(d.heading||`Part ${part}`),passage:String(d.passage||""),audio_script:String(d.audio_script||""),questions:d.questions});
+    res.json({part,part5_skills:part===5?part5Plan.map(p=>p.skill):[],heading:String(d.heading||`Part ${part}`),passage:String(d.passage||""),audio_script:String(d.audio_script||""),questions:d.questions});
   }catch(e){console.error("TOEIC generation error",e);res.status(500).json({error:`TOEIC問題生成エラー: ${e.message||"不明なエラー"}`});}
 });
 app.post("/api/speech",requireKey,async(req,res)=>{try{const text=String(req.body.text||"").trim();if(!text)return res.status(400).json({error:"読み上げる英文がありません。"});const r=await fetch("https://api.openai.com/v1/audio/speech",{method:"POST",headers:{Authorization:`Bearer ${OPENAI_API_KEY}`,"Content-Type":"application/json"},body:JSON.stringify({model:"gpt-4o-mini-tts",voice:"alloy",input:text,response_format:"mp3"})});if(!r.ok)return res.status(r.status).json({error:(await r.text())||"音声生成に失敗しました。"});res.set("Content-Type","audio/mpeg");res.send(Buffer.from(await r.arrayBuffer()));}catch(e){console.error(e);res.status(500).json({error:e.message||"音声生成に失敗しました。"});}});
