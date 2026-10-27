@@ -8669,19 +8669,53 @@ function toeicQuestionShape(q,part){
     new Set(q.options.map(x=>x.trim().toLowerCase())).size===count &&
     Number.isInteger(Number(q.answer_index)) && Number(q.answer_index)>=0 && Number(q.answer_index)<count;
 }
+// Part 6: substitute the proposed answer into the actual numbered blank.
+function toeicPart6CompletedText(passage, question, answer){
+  const text=String(passage||'');
+  const m=String(question||'').match(/\[(\d+)\]/);
+  if(!m)return null;
+  const n=m[1];
+  const token=new RegExp('\\['+n+'\\]\\s*_{3,}');
+  if(!token.test(text))return null;
+  return text.replace(token,String(answer||'').trim());
+}
+function toeicPart6BasicCheck(doc,q){
+  const answer=String(q.options?.[Number(q.answer_index)]||'').trim();
+  const passage=String(doc.passage||'');
+  const completed=toeicPart6CompletedText(passage,q.question,answer);
+  if(!completed)return {valid:false,reason:'The numbered blank could not be located in the passage.'};
+  const ref=String(q.question||'').match(/\[(\d+)\]/);
+  const before=passage.slice(0,passage.search(new RegExp('\\['+ref[1]+'\\]\\s*_{3,}')));
+  const after=passage.slice(before.length).replace(new RegExp('^\\['+ref[1]+'\\]\\s*_{3,}'),'');
+  const sentenceInsertion=/which sentence|insert|complete sentence|文を挿入/i.test(String(q.question||'')) || /[.!?]$/.test(answer);
+  if(sentenceInsertion){
+    // A complete sentence must occupy its own blank, not be attached to a clause.
+    if(before.trim() && !/[.!?:]\s*$/.test(before.trim()))return {valid:false,reason:'Sentence insertion begins inside an existing sentence.'};
+    if(after.trim() && !/^[A-Z"“\n\r]/.test(after.trim()))return {valid:false,reason:'Sentence insertion is followed by an incomplete sentence fragment.'};
+    const clean=answer.replace(/[^a-z0-9]+/gi,' ').trim().toLowerCase();
+    const context=after.slice(0,240).replace(/[^a-z0-9]+/gi,' ').trim().toLowerCase();
+    if(clean.length>22 && context.includes(clean))return {valid:false,reason:'Inserted sentence duplicates nearby passage text.'};
+  }
+  return {valid:true,completed};
+}
 async function reviewToeicOtherPart(part,doc,photo){
   const source={part,heading:doc.heading||'',passage:doc.passage||'',audio_script:doc.audio_script||''};
   const reviews=[];
   for(let i=0;i<doc.questions.length;i++){
     const q=doc.questions[i];
+    if(part===6){
+      const structural=toeicPart6BasicCheck(doc,q);
+      if(!structural.valid){reviews.push({valid:false,reason:structural.reason,explanation_ja:''});continue;}
+    }
     const instructions=part===1?'Verify the proposed correct photo description is visibly supported by the attached photo, and every distractor is demonstrably false or unsupported. Do not invent unseen details.':
       part===2?'Check the spoken question-response relationship: only one response must be conversationally appropriate, including indirect replies. Reject plausible alternative replies.':
       part===3||part===4?'Check the answer is supported by the AUDIO SCRIPT, including inference and speaker intent; other options must not also be supported. Cite an exact short supporting quote from the script.':
-      part===6?'Check the passage and numbered blank context, grammar, discourse coherence, and that exactly one option fits the specified blank. Reject if blank reference is unclear or alternatives work. Cite supporting text.':
+      part===6?'For the numbered blank, substitute EVERY option into the FULL original passage and inspect the completed passage. Reject if the correct option creates a fragment, repeated clause, duplicate meaning, punctuation errors, or an unnatural transition. For sentence-insertion items the blank must occupy a full sentence position, not the beginning or middle of an existing sentence. Confirm exactly one choice works. Base the explanation on written context, never an audio script. Cite supporting text.':
       'Check the answer is directly supported or safely inferred from the passage, not outside knowledge. Cite an exact short supporting quote. Reject ambiguous alternatives.';
     const prompt=`Independent TOEIC-style editorial verification. You are NOT the question writer. Review only ONE item. ${instructions}
 Check grammatical correctness, natural language, one unambiguous best answer, consistency with the supplied stimulus, and Japanese explanation. If uncertain reject. Never silently change options or the answer.
 SOURCE: ${JSON.stringify(source)}
+${part===6?'COMPLETED PASSAGE WITH PROPOSED CORRECT ANSWER: '+toeicPart6CompletedText(doc.passage,q.question,q.options[q.answer_index]):''}
 ITEM: ${JSON.stringify({question:q.question,options:q.options,answer_index:q.answer_index,explanation_ja:q.explanation_ja})}
 Return JSON only: {"valid":true,"reason":"brief reason for rejection if invalid","evidence":"exact short support quote or description of visible evidence","explanation_ja":"accurate concise Japanese explanation"}.`;
     const r=await toeicGenerateJson(prompt,part===1?photo:null);
@@ -8693,7 +8727,7 @@ Return JSON only: {"valid":true,"reason":"brief reason for rejection if invalid"
 }
 async function regenerateToeicItem(part,doc,index,photo){
   const old=doc.questions[index];
-  const prompt=`Replace ONLY this failed TOEIC-style Part ${part} question. Keep the source material (passage/audio_script/photo) unchanged and do not rewrite it. Create one new question that has exactly ${part===2?3:4} unique options and exactly one best answer. For Part 6, target the SAME numbered blank as the failed question. For Part 1 the answer must be visibly true of the supplied photo. For Part 2 the question should be a natural spoken prompt with one appropriate reply. For Parts 3,4,7 the answer must be directly supported by the source. Provide a Japanese explanation. Avoid the failed question and its ambiguity.
+  const prompt=`Replace ONLY this failed TOEIC-style Part ${part} question. Keep the source material (passage/audio_script/photo) unchanged and do not rewrite it. Create one new question that has exactly ${part===2?3:4} unique options and exactly one best answer. For Part 6, target the SAME numbered blank as the failed question. Do NOT duplicate adjacent text. For sentence insertion, ensure the blank is an entire sentence slot; if the existing passage makes a valid insertion impossible, return {"unrepairable":true} instead of forcing an answer. For Part 1 the answer must be visibly true of the supplied photo. For Part 2 the question should be a natural spoken prompt with one appropriate reply. For Parts 3,4,7 the answer must be directly supported by the source. Provide a Japanese explanation. Avoid the failed question and its ambiguity.
 SOURCE: ${JSON.stringify({passage:doc.passage||'',audio_script:doc.audio_script||'',heading:doc.heading||''})}
 FAILED ITEM: ${JSON.stringify(old)}
 Return JSON only: {"question":"...","options":["..."],"answer_index":0,"explanation_ja":"..."}.`;
@@ -8716,7 +8750,7 @@ async function validateAndRepairToeicOtherPart(part,doc,photo){
     for(const i of bad){
       try{
         const replacement=await regenerateToeicItem(part,doc,i,photo);
-        if(toeicQuestionShape(replacement,part))doc.questions[i]=replacement;
+        if(toeicQuestionShape(replacement,part) && (part!==6 || toeicPart6BasicCheck(doc,replacement).valid))doc.questions[i]=replacement;
       }catch(e){console.warn(`TOEIC Part ${part} item ${i+1} repair failed:`,e.message);}
     }
   }
@@ -8762,7 +8796,7 @@ app.post("/api/toeic",requireKey,async(req,res)=>{
 - The completed sentence must be idiomatic workplace English and the explanation must identify the exact grammar or vocabulary distinction.
 - Include translation_ja for the COMPLETE sentence with the correct answer inserted.
 - Avoid ambiguous time references and incomplete context.`:"";
-    const prompt=`Create ORIGINAL TOEIC L&R-style practice (not ETS official). Part ${part}: ${specs[part]}. CEFR ${String(req.body.level||"B1")}; topic ${String(req.body.topic||"Random")}. Exactly ${count} questions. Part 2: exactly 3 answer options; other parts: 4. Output JSON only with heading, passage, audio_script, questions. Each question: {"question":"English question","options":["English choice"],"answer_index":0,"skill":"For Part 5, the assigned grammar skill verbatim","explanation_ja":"日本語の簡潔な解説","translation_ja":"Part 5のみ、正答を補った完成英文の自然な日本語訳"}. For Parts 1-4 audio_script contains the English speech; for Parts 5-7 passage contains reading text as needed. For Part 5 each question must contain _____. For Part 6 include numbered blanks in passage. All correct answers must be supported by the stimulus. ${part5PlanRules} ${part5Rules} No markdown.`;
+    const prompt=`Create ORIGINAL TOEIC L&R-style practice (not ETS official). Part ${part}: ${specs[part]}. CEFR ${String(req.body.level||"B1")}; topic ${String(req.body.topic||"Random")}. Exactly ${count} questions. Part 2: exactly 3 answer options; other parts: 4. Output JSON only with heading, passage, audio_script, questions. Each question: {"question":"English question","options":["English choice"],"answer_index":0,"skill":"For Part 5, the assigned grammar skill verbatim","explanation_ja":"日本語の簡潔な解説","translation_ja":"Part 5のみ、正答を補った完成英文の自然な日本語訳"}. For Parts 1-4 audio_script contains the English speech; for Parts 5-7 passage contains reading text as needed. For Part 5 each question must contain _____. For Part 6 include numbered blanks in passage. Part 6 MUST have exactly one numbered placeholder [1] _____ through [4] _____ per question; each question must reference its matching number. If an option is a complete sentence, place the placeholder as a STANDALONE sentence between other complete sentences (never [3] _____, refreshments ...). Never repeat the same proposition in the answer and surrounding passage. Mentally insert each proposed correct answer into the full passage and ensure grammatical, non-redundant text. Part 6 explanations must refer to the written passage, not audio. All correct answers must be supported by the stimulus. ${part5PlanRules} ${part5Rules} No markdown.`;
     let d,last;
     for(let attempt=0;attempt<(part===5?4:3);attempt++){
       try{
