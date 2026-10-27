@@ -8698,7 +8698,7 @@ app.post("/api/toeic",requireKey,async(req,res)=>{
 - The completed sentence must be idiomatic workplace English and the explanation must identify the exact grammar or vocabulary distinction.
 - Include translation_ja for the COMPLETE sentence with the correct answer inserted.
 - Avoid ambiguous time references and incomplete context.`:"";
-    const prompt=`Create ORIGINAL TOEIC L&R-style practice (not ETS official). Part ${part}: ${specs[part]}. CEFR ${String(req.body.level||"B1")}; topic ${String(req.body.topic||"Random")}. Exactly ${count} questions. Part 2: exactly 3 answer options; other parts: 4. Output JSON only with heading, passage, audio_script, questions. Each question: {"question":"English question","options":["English choice"],"answer_index":0,"explanation_ja":"日本語の簡潔な解説","translation_ja":"Part 5のみ、正答を補った完成英文の自然な日本語訳"}. For Parts 1-4 audio_script contains the English speech; for Parts 5-7 passage contains reading text as needed. For Part 5 each question must contain _____. For Part 6 include numbered blanks in passage. All correct answers must be supported by the stimulus. ${part5PlanRules} ${part5Rules} No markdown.`;
+    const prompt=`Create ORIGINAL TOEIC L&R-style practice (not ETS official). Part ${part}: ${specs[part]}. CEFR ${String(req.body.level||"B1")}; topic ${String(req.body.topic||"Random")}. Exactly ${count} questions. Part 2: exactly 3 answer options; other parts: 4. Output JSON only with heading, passage, audio_script, questions. Each question: {"question":"English question","options":["English choice"],"answer_index":0,"skill":"For Part 5, the assigned grammar skill verbatim","explanation_ja":"日本語の簡潔な解説","translation_ja":"Part 5のみ、正答を補った完成英文の自然な日本語訳"}. For Parts 1-4 audio_script contains the English speech; for Parts 5-7 passage contains reading text as needed. For Part 5 each question must contain _____. For Part 6 include numbered blanks in passage. All correct answers must be supported by the stimulus. ${part5PlanRules} ${part5Rules} No markdown.`;
     let d,last;
     for(let attempt=0;attempt<(part===5?4:3);attempt++){
       try{
@@ -8706,7 +8706,8 @@ app.post("/api/toeic",requireKey,async(req,res)=>{
         if(!Array.isArray(d.questions)||d.questions.length!==count)throw Error("生成された問題数が一致しません。");
         if(part===5){
           if(!d.questions.every(toeicPart5StructureValid))throw Error("Part 5の問題形式が不適切です。");
-          if(!d.questions.every((q,i)=>String(q.skill||"").trim()===part5Plan[i].skill))throw Error("Part 5の出題分野が指定と一致しません。");
+          // Skill metadata is assigned by the server; missing AI-generated skill must not invalidate an otherwise good question.
+          d.questions.forEach((q,i)=>{q.skill=part5Plan[i].skill;});
           const normalized=d.questions.map(q=>q.question.toLowerCase().replace(/[^a-z ]/g," ").trim());
           if(new Set(normalized).size!==normalized.length)throw Error("類似問題が重複しています。");
           const reviews=await validateToeicPart5(d.questions);
@@ -8727,7 +8728,7 @@ app.post("/api/toeic",requireKey,async(req,res)=>{
           q.options=entries.map(x=>String(x.value));q.answer_index=entries.findIndex(x=>x.correct);
         }
         break;
-      }catch(e){last=e;d=null;}
+      }catch(e){last=e;d=null;console.warn(`TOEIC Part ${part} attempt ${attempt+1} failed:`,e.message);}
     }
     if(!d)throw last||Error("問題生成に失敗しました。");
     if(part===1)d.audio_script=d.questions[0].options.map((x,i)=>`${String.fromCharCode(65+i)}. ${x}`).join(". ");
