@@ -911,7 +911,7 @@ $("vocabMode").addEventListener("change", syncVocabPronunciationButton);
 $("vocabCount").addEventListener("change",()=>{if($("vocabAnswerMode").value!=="falling")$("newVocabBtn").textContent=`＋ ${$("vocabCount").value}問作る`;});
 $("newVocabBtn").addEventListener("click",generateVocab);$("vocabAgainBtn").addEventListener("click",generateVocab);
 
-async // Randomize the four choices and remap the correct answer index together.
+// Randomize the four choices and remap the correct answer index together.
 // This is applied to the regular 4-choice mode, not the falling game.
 function shuffleVocabChoiceAnswers(questions){
   return questions.map(q=>{
