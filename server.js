@@ -6,7 +6,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "5mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
 function requireKey(req,res,next){if(!OPENAI_API_KEY)return res.status(500).json({error:"OPENAI_API_KEY が設定されていません。"});next();}
@@ -8625,7 +8625,46 @@ Rules:
 }});
 
 
-app.post("/api/toeic",requireKey,async(req,res)=>{try{const part=Number(req.body.part);if(!Number.isInteger(part)||part<1||part>7)return res.status(400).json({error:"Invalid Part"});const specs={1:"Photo description: 1 question, 4 spoken English descriptive choices, exactly one matches image.",2:"Question-response: 1 spoken question and 3 response choices. Audio script reads question then A/B/C responses.",3:"Two-speaker dialogue (90-140 words), 3 comprehension questions with 4 choices.",4:"One spoken announcement/talk (90-140 words), 3 comprehension questions with 4 choices.",5:"4 independent incomplete English sentences with _____, each with 4 choices.",6:"Email or notice (130-190 words) with 4 numbered blanks [1]-[4] and 4 completion questions, including one full-sentence insertion.",7:"Reading passage (180-260 words) with 4 comprehension questions."};const count=[0,1,1,3,3,4,4,4][part];const prompt=`Generate ORIGINAL TOEIC L&R-style practice (not official ETS items). CEFR ${String(req.body.level||"B1")}, topic ${String(req.body.topic||"Random")}. Part ${part}: ${specs[part]}. Return ONLY JSON {"heading":"...","passage":"reading passage or listening transcript; otherwise empty","audio_script":"English speech for Parts 1-4; empty otherwise","questions":[{"question":"English question","options":["..."],"answer_index":0,"explanation_ja":"Japanese explanation"}]}. Exactly ${count} questions. Part 2 has exactly 3 options, other parts 4. English choices and questions. No markdown.`;let d;if(part===1){const photo=String(req.body.photo||"");if(!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(photo)||photo.length>4100000)return res.status(400).json({error:"3MB以下のJPEG/PNG/WebP画像が必要です"});const r=await fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{Authorization:`Bearer ${OPENAI_API_KEY}`,"Content-Type":"application/json"},body:JSON.stringify({model:"gpt-5.6-luna",input:[{role:"user",content:[{type:"input_text",text:prompt},{type:"input_image",image_url:photo}]}]})});const data=await r.json();if(!r.ok)throw Error(data.error?.message||"画像問題生成エラー");d=parseJson(outputText(data));}else d=await generateJson(prompt);if(!Array.isArray(d.questions)||d.questions.length!==count)throw Error("問題数が一致しません");for(const q of d.questions){const len=part===2?3:4;if(!Array.isArray(q.options)||q.options.length!==len||!Number.isInteger(q.answer_index)||q.answer_index<0||q.answer_index>=len)throw Error("選択肢が不正です");const entries=q.options.map((x,i)=>({x,correct:i===q.answer_index}));for(let i=entries.length-1;i>0;i--){const k=Math.floor(Math.random()*(i+1));[entries[i],entries[k]]=[entries[k],entries[i]];}q.options=entries.map(x=>x.x);q.answer_index=entries.findIndex(x=>x.correct);}if(part===1){d.audio_script=d.questions[0].options.map((x,i)=>`${String.fromCharCode(65+i)}. ${x}`).join(" ");}res.json({part,heading:String(d.heading||`Part ${part}`),passage:String(d.passage||""),audio_script:String(d.audio_script||""),questions:d.questions});}catch(e){console.error(e);res.status(500).json({error:e.message||"問題生成失敗"});}});
+async function toeicGenerateJson(prompt,photo){
+  const messages=[{role:"user",content:photo?[{type:"text",text:prompt},{type:"image_url",image_url:{url:photo}}]:prompt}];
+  const r=await fetch("https://api.openai.com/v1/chat/completions",{
+    method:"POST",headers:{Authorization:`Bearer ${OPENAI_API_KEY}`,"Content-Type":"application/json"},
+    body:JSON.stringify({model:process.env.TOEIC_MODEL||"gpt-4.1-mini",messages,response_format:{type:"json_object"},temperature:0.7})
+  });
+  const data=await r.json();
+  if(!r.ok)throw Error(data.error?.message||`AI API error (${r.status})`);
+  return parseJson(data.choices?.[0]?.message?.content);
+}
+app.post("/api/toeic",requireKey,async(req,res)=>{
+  try{
+    const part=Number(req.body.part);
+    if(!Number.isInteger(part)||part<1||part>7)return res.status(400).json({error:"Partを選択してください。"});
+    const specs={1:"Photo description, one question with 4 English descriptions",2:"Question-response, one question and 3 English response options",3:"Two-speaker dialogue, 3 comprehension questions",4:"Short announcement or talk, 3 comprehension questions",5:"Four independent sentence completion questions with _____",6:"One email/notice with four numbered blanks [1] to [4], four corresponding questions",7:"Reading passage with four comprehension questions"};
+    const count=[0,1,1,3,3,4,4,4][part];
+    const photo=String(req.body.photo||"");
+    if(part===1 && (!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(photo)||photo.length>4100000))return res.status(400).json({error:"3MB以下の写真を選択してください。"});
+    const prompt=`Create ORIGINAL TOEIC L&R-style practice (not ETS official). Part ${part}: ${specs[part]}. CEFR ${String(req.body.level||"B1")}; topic ${String(req.body.topic||"Random")}. Exactly ${count} questions. Part 2: exactly 3 answer options; other parts: 4. Output JSON only with heading, passage, audio_script, questions. Each question: {"question":"English question","options":["English choice"],"answer_index":0,"explanation_ja":"日本語の簡潔な解説"}. For Parts 1-4 audio_script contains the English speech; for Parts 5-7 passage contains reading text as needed. For Part 5 each question must contain _____; for Part 6 include numbered blanks in passage. All correct answers must be supported by the stimulus. No markdown.`;
+    let d,last;
+    for(let attempt=0;attempt<3;attempt++){
+      try{
+        d=await toeicGenerateJson(prompt,part===1?photo:null);
+        if(!Array.isArray(d.questions)||d.questions.length!==count)throw Error("生成された問題数が一致しません。");
+        for(const q of d.questions){
+          const len=part===2?3:4;
+          q.answer_index=Number(q.answer_index);
+          if(!Array.isArray(q.options)||q.options.length!==len||!Number.isInteger(q.answer_index)||q.answer_index<0||q.answer_index>=len)throw Error("選択肢の形式が不正です。");
+          const entries=q.options.map((value,i)=>({value,correct:i===q.answer_index}));
+          for(let i=entries.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[entries[i],entries[j]]=[entries[j],entries[i]];}
+          q.options=entries.map(x=>String(x.value));q.answer_index=entries.findIndex(x=>x.correct);
+        }
+        break;
+      }catch(e){last=e;d=null;}
+    }
+    if(!d)throw last||Error("問題生成に失敗しました。");
+    if(part===1)d.audio_script=d.questions[0].options.map((x,i)=>`${String.fromCharCode(65+i)}. ${x}`).join(". ");
+    res.json({part,heading:String(d.heading||`Part ${part}`),passage:String(d.passage||""),audio_script:String(d.audio_script||""),questions:d.questions});
+  }catch(e){console.error("TOEIC generation error",e);res.status(500).json({error:`TOEIC問題生成エラー: ${e.message||"不明なエラー"}`});}
+});
 app.post("/api/speech",requireKey,async(req,res)=>{try{const text=String(req.body.text||"").trim();if(!text)return res.status(400).json({error:"読み上げる英文がありません。"});const r=await fetch("https://api.openai.com/v1/audio/speech",{method:"POST",headers:{Authorization:`Bearer ${OPENAI_API_KEY}`,"Content-Type":"application/json"},body:JSON.stringify({model:"gpt-4o-mini-tts",voice:"alloy",input:text,response_format:"mp3"})});if(!r.ok)return res.status(r.status).json({error:(await r.text())||"音声生成に失敗しました。"});res.set("Content-Type","audio/mpeg");res.send(Buffer.from(await r.arrayBuffer()));}catch(e){console.error(e);res.status(500).json({error:e.message||"音声生成に失敗しました。"});}});
 
 app.post("/api/listening-translation-check",requireKey,async(req,res)=>{try{
