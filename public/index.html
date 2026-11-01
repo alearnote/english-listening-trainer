@@ -40,8 +40,8 @@
           <audio id="audio" preload="none"></audio><p id="listeningStatus" class="status">「新しい問題」を押してください</p>
         </div>
 
-        <div id="dictationPanel" class="card"><label class="stack"><span>聞こえた英文</span><textarea id="dictationAnswer" rows="4" disabled placeholder="英文を入力"></textarea></label><button id="dictationCheckBtn" class="primary" disabled>答え合わせ</button></div>
-        <div id="translationPanel" class="card hidden"><label class="stack"><span>聞こえた英文の日本語訳</span><textarea id="translationAnswer" rows="4" disabled placeholder="日本語訳を入力"></textarea></label><button id="translationCheckBtn" class="primary" disabled>答え合わせ</button></div>
+        <div id="dictationPanel" class="card"><label class="stack"><span>聞こえた英文</span><textarea id="dictationAnswer" rows="4" disabled placeholder="英文を入力"></textarea></label><button id="dictationCheckBtn" class="primary" disabled>答え合わせ</button><button id="dictationGiveUpBtn" type="button" disabled>分かりません</button></div>
+        <div id="translationPanel" class="card hidden"><label class="stack"><span>聞こえた英文の日本語訳</span><textarea id="translationAnswer" rows="4" disabled placeholder="日本語訳を入力"></textarea></label><button id="translationCheckBtn" class="primary" disabled>答え合わせ</button><button id="translationGiveUpBtn" type="button" disabled>分かりません</button></div>
         <div id="listeningMcqPanel" class="card hidden"><h2>内容理解</h2><div id="listeningQuestions"></div><button id="listeningMcqCheckBtn" class="primary" disabled>答え合わせ</button></div>
 
         <div id="listeningResult" class="card hidden">
@@ -231,6 +231,6 @@
       </section>
     </main>
   </div>
-  <script src="/app.js?v=toeic-v25-diversity"></script>
+  <script src="/app.js?v=20261101-listening-giveup-v29"></script>
 </body>
 </html>
