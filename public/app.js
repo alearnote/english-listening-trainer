@@ -273,6 +273,9 @@ function resetListeningMode() {
   $("dictationYourAnswer").classList.add("hidden");
   $("playBtn").disabled = true;
   $("listeningMcqPanel").classList.add("hidden");
+  $("listeningTranslationMcqPanel").classList.add("hidden");
+  $("listeningTranslationChoices").innerHTML="";
+  $("listeningTranslationMcqCheckBtn").disabled=true;
   $("listeningQuestions").innerHTML = "";
   $("listeningMcqCheckBtn").disabled = true;
   $("dictationPanel").classList.toggle("hidden", $("listeningMode").value !== "dictation");
@@ -334,7 +337,15 @@ async function playListening() {
     audio.playbackRate = listeningSpeed;
     audio.currentTime = 0;
     audio.onended = () => {
-      if ($("listeningMode").value === "mcq") {
+      if ($("listeningMode").value === "translation-mcq") {
+        if (!listeningMcqRevealed) {
+          renderListeningTranslationChoices();
+          $("listeningTranslationMcqPanel").classList.remove("hidden");
+          listeningMcqRevealed = true;
+          $("listeningTranslationMcqPanel").scrollIntoView({behavior:"smooth",block:"start"});
+        }
+        $("listeningStatus").textContent = "音声の意味に最も近い日本語訳を選んでください。";
+      } else if ($("listeningMode").value === "mcq") {
         if (!listeningMcqRevealed) {
           renderListeningQuestions();
           $("listeningMcqPanel").classList.remove("hidden");
@@ -365,6 +376,43 @@ function renderListeningQuestions(){
   $("listeningQuestions").innerHTML=(listening.questions||[]).map((q,i)=>questionHtml(q,i,"lq")).join("");
   document.querySelectorAll('input[name^="lq"]').forEach(input=>input.addEventListener("change",()=>{$("listeningMcqCheckBtn").disabled=!(listening.questions||[]).every((_,i)=>document.querySelector(`input[name="lq${i}"]:checked`));}));
 }
+
+function renderListeningTranslationChoices(){
+  const q=listening?.translation_mcq;
+  if(!q || !Array.isArray(q.options) || q.options.length!==4) {
+    $("listeningStatus").textContent="日本語訳の選択肢が生成されませんでした。新しい問題を作成してください。";
+    return;
+  }
+  $("listeningTranslationChoices").innerHTML=q.options.map((option,i)=>
+    `<label class="option"><input type="radio" name="listeningTranslationChoice" value="${i}"><span><strong>${String.fromCharCode(65+i)}.</strong> ${escapeHtml(option)}</span></label>`
+  ).join("");
+  $("listeningTranslationMcqCheckBtn").disabled=true;
+  $("listeningTranslationChoices").querySelectorAll("input").forEach(input=>{
+    input.addEventListener("change",()=>$("listeningTranslationMcqCheckBtn").disabled=false);
+  });
+}
+
+$("listeningTranslationMcqCheckBtn").addEventListener("click",()=>{
+  if(!listening?.translation_mcq)return;
+  const selected=document.querySelector('input[name="listeningTranslationChoice"]:checked');
+  if(!selected)return;
+  const q=listening.translation_mcq;
+  const answer=Number(q.answer_index);
+  const chosen=Number(selected.value);
+  const correct=chosen===answer;
+  $("listeningScore").textContent=correct?"1/1":"0/1";
+  $("listeningScoreLabel").textContent="Japanese translation quiz";
+  $("listeningScoreMsg").textContent=correct?"正解です！":"正しい日本語訳を確認しましょう。";
+  $("dictationYourAnswer").classList.add("hidden");
+  $("translationYourAnswer").classList.add("hidden");
+  $("listeningCoach").classList.add("hidden");
+  $("listeningReview").innerHTML=`<div class="review-card ${correct?"review-correct":"review-wrong"}"><p><strong>あなたの回答:</strong> ${escapeHtml(q.options[chosen])}</p><p><strong>正解:</strong> ${escapeHtml(q.options[answer])}</p><p>${escapeHtml(q.explanation_ja||"")}</p></div>`;
+  $("listeningReview").classList.remove("hidden");
+  $("listeningTranslationMcqCheckBtn").disabled=true;
+  $("listeningTranslationChoices").querySelectorAll("input").forEach(x=>x.disabled=true);
+  addProgress("listening",correct?1:0,1);
+  showListeningBase();
+});
 
 function normalize(s){return String(s).toLowerCase().replace(/[’']/g,"'").replace(/[^\p{L}\p{N}' ]/gu," ").replace(/\s+/g," ").trim();}
 function wordLevenshtein(a,b){const A=normalize(a).split(" "),B=normalize(b).split(" "),dp=Array.from({length:A.length+1},()=>Array(B.length+1).fill(0));for(let i=0;i<=A.length;i++)dp[i][0]=i;for(let j=0;j<=B.length;j++)dp[0][j]=j;for(let i=1;i<=A.length;i++)for(let j=1;j<=B.length;j++){const c=A[i-1]===B[j-1]?0:1;dp[i][j]=Math.min(dp[i-1][j]+1,dp[i][j-1]+1,dp[i-1][j-1]+c);}return{dist:dp[A.length][B.length],max:Math.max(A.length,B.length,1)}}
