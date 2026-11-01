@@ -264,9 +264,11 @@ function resetListeningMode() {
   $("dictationAnswer").value = "";
   $("dictationAnswer").disabled = true;
   $("dictationCheckBtn").disabled = true;
+  $("dictationGiveUpBtn").disabled = true;
   $("translationAnswer").value = "";
   $("translationAnswer").disabled = true;
   $("translationCheckBtn").disabled = true;
+  $("translationGiveUpBtn").disabled = true;
   $("translationYourAnswer").classList.add("hidden");
   $("dictationYourAnswer").classList.add("hidden");
   $("playBtn").disabled = true;
@@ -298,11 +300,13 @@ $("newListeningBtn").addEventListener("click", async () => {
       $("dictationPanel").classList.remove("hidden");
       $("dictationAnswer").disabled = false;
       $("dictationCheckBtn").disabled = false;
+      $("dictationGiveUpBtn").disabled = false;
       $("listeningStatus").textContent = "準備できました。音声を再生してください。";
     } else if ($("listeningMode").value === "translation") {
       $("translationPanel").classList.remove("hidden");
       $("translationAnswer").disabled = false;
       $("translationCheckBtn").disabled = false;
+      $("translationGiveUpBtn").disabled = false;
       $("listeningStatus").textContent = "準備できました。音声を聞いて、日本語訳を入力してください。";
     } else {
       $("listeningStatus").textContent = "準備できました。まず音声を最後まで聞いてください。";
@@ -379,7 +383,7 @@ $("dictationCheckBtn").addEventListener("click",async()=>{
   const user=$("dictationAnswer").value.trim(),score=dictationScore(listening.sentence,user);
   $("listeningScore").textContent=`${score}%`;$("listeningScoreLabel").textContent="Dictation score";$("listeningScoreMsg").textContent=score>=95?"Excellent!":score>=80?"かなり聞き取れています。":score>=60?"あと少しです。":"正解を確認して聞き直しましょう。";
   $("dictationYourAnswer").classList.remove("hidden");$("dictationYourAnswerText").textContent=user;$("listeningReview").classList.add("hidden");$("listeningCoach").classList.remove("hidden");showListeningBase();
-  $("listeningFeedback").textContent="AIが解説を生成しています…";$("listeningFocus").innerHTML="";addProgress("listening",score>=80?1:0,1);$("dictationCheckBtn").disabled=true;
+  $("listeningFeedback").textContent="AIが解説を生成しています…";$("listeningFocus").innerHTML="";addProgress("listening",score>=80?1:0,1);$("dictationCheckBtn").disabled=true;$("dictationGiveUpBtn").disabled=true;$("dictationAnswer").disabled=true;
   try{const x=await postJson("/api/explain",{sentence:listening.sentence,answer:user});$("listeningFeedback").textContent=x.feedback;$("listeningFocus").innerHTML=(x.focus||[]).map(i=>`<li>${escapeHtml(i)}</li>`).join("");}catch{$("listeningFeedback").textContent="AI解説の取得に失敗しました。";}
 });
 
@@ -387,6 +391,7 @@ $("translationCheckBtn").addEventListener("click", async () => {
   if (!listening || !$("translationAnswer").value.trim()) return;
   const user = $("translationAnswer").value.trim();
   $("translationCheckBtn").disabled = true;
+  $("translationGiveUpBtn").disabled = true;
   $("translationAnswer").disabled = true;
   $("listeningScore").textContent = "…";
   $("listeningScoreLabel").textContent = "Translation";
@@ -418,9 +423,33 @@ $("translationCheckBtn").addEventListener("click", async () => {
     $("listeningScoreMsg").textContent = "判定に失敗しました。";
     $("listeningFeedback").textContent = e.message || "AI判定の取得に失敗しました。";
     $("translationCheckBtn").disabled = false;
+    $("translationGiveUpBtn").disabled = false;
     $("translationAnswer").disabled = false;
   }
 });
+
+function giveUpListening(mode){
+  if(!listening || !$("listeningResult").classList.contains("hidden"))return;
+  const dictation=mode==="dictation";
+  const answer=$(dictation?"dictationAnswer":"translationAnswer");
+  const check=$(dictation?"dictationCheckBtn":"translationCheckBtn");
+  const giveUp=$(dictation?"dictationGiveUpBtn":"translationGiveUpBtn");
+  if(giveUp.disabled)return;
+  check.disabled=true;
+  giveUp.disabled=true;
+  answer.disabled=true;
+  $("listeningScore").textContent="—";
+  $("listeningScoreLabel").textContent="答えを確認";
+  $("listeningScoreMsg").textContent="分からなかった問題として記録しました。英文と日本語訳を確認してください。";
+  $("dictationYourAnswer").classList.add("hidden");
+  $("translationYourAnswer").classList.add("hidden");
+  $("listeningReview").classList.add("hidden");
+  $("listeningCoach").classList.add("hidden");
+  addProgress("listening",0,1);
+  showListeningBase();
+}
+$("dictationGiveUpBtn").addEventListener("click",()=>giveUpListening("dictation"));
+$("translationGiveUpBtn").addEventListener("click",()=>giveUpListening("translation"));
 
 $("listeningMcqCheckBtn").addEventListener("click",()=>{
   let correctCount=0;
