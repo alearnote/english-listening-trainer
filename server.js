@@ -45,7 +45,31 @@ app.post("/api/listening",requireKey,async(req,res)=>{try{
   const variety=`Actual scenario category: ${actualTopic}\nRecent exercises:\n${recentText}\nFive most recent:\n${recent5}\nRules: do not repeat the same underlying event, location+problem+goal+outcome, or communicative purpose. Missing a bus/train/subway all count as essentially the same scenario. Keep it natural and realistic. If Random, use the selected category but create a fresh situation.`;
   const prompt=mode==="mcq"?`Create ONE English listening comprehension exercise for a Japanese learner. CEFR ${level}. Length ${lengthRule}. ${variety}\nReturn ONLY JSON: {"sentence":"...","translation":"...","listening_tip":"...","scenario":"...","questions":[{"question":"...","options":["A","B","C","D"],"answer_index":0,"explanation_ja":"..."},{"question":"...","options":["A","B","C","D"],"answer_index":1,"explanation_ja":"..."},{"question":"...","options":["A","B","C","D"],"answer_index":2,"explanation_ja":"..."}]} Exactly 3 questions, 4 English options each, answers supported by audio, natural CEFR ${level}, no markdown.`:`Create ONE English listening exercise for a Japanese learner. CEFR ${level}. Length ${lengthRule}. ${variety}\nReturn ONLY JSON: {"sentence":"...","translation":"...","listening_tip":"...","scenario":"..."}. Natural useful CEFR ${level}, no markdown.`;
   let data,last;for(let i=0;i<2;i++){try{data=await generateJson(prompt);if(!data?.sentence)throw new Error("Listening英文が生成されませんでした。");if(mode==="mcq")validateQuestions(data.questions,3);break;}catch(e){data=null;last=e;}}
-  if(!data)throw last||new Error("Listening問題の生成に失敗しました。");res.json(data);
+  if(!data)throw last||new Error("Listening問題の生成に失敗しました。");
+  if(mode==="translation-mcq"){
+    const translationPrompt=`You are creating a Japanese-translation multiple-choice listening quiz.
+English audio script: ${JSON.stringify(data.sentence)}
+Reference Japanese translation: ${JSON.stringify(data.translation)}
+Return ONLY JSON {"options":["...","...","...","..."],"answer_index":0,"explanation_ja":"..."}.
+Rules: Exactly FOUR distinct, natural Japanese translations. Exactly ONE is faithful to the entire English script; the other three must be plausible but clearly wrong in meaning (e.g. changed negation, time, actor, quantity, or intention). Do not include English in options. Keep each option similar in length. Explain the correct meaning and key contrast in Japanese. No markdown.`;
+    let mcq=null,mcqError;
+    for(let attempt=0;attempt<3;attempt++){
+      try{
+        const q=await generateJson(translationPrompt);
+        if(!Array.isArray(q.options)||q.options.length!==4||new Set(q.options.map(x=>String(x).trim())).size!==4)throw new Error("日本語訳の選択肢が不正です。");
+        const ai=answerIndex(q);
+        if(ai===null)throw new Error("正解位置が不正です。");
+        if(q.options.some(x=>!hasJapanese(String(x))))throw new Error("日本語以外の選択肢があります。");
+        const order=[0,1,2,3];
+        for(let i=3;i>0;i--){const k=Math.floor(Math.random()*(i+1));[order[i],order[k]]=[order[k],order[i]];}
+        mcq={options:order.map(i=>String(q.options[i])),answer_index:order.indexOf(ai),explanation_ja:String(q.explanation_ja||"")};
+        break;
+      }catch(e){mcqError=e;}
+    }
+    if(!mcq)throw mcqError||new Error("日本語訳4択の生成に失敗しました。");
+    data.translation_mcq=mcq;
+  }
+  res.json(data);
 }catch(e){console.error(e);res.status(500).json({error:e.message||"問題作成に失敗しました。"});}});
 
 const VOCAB_POOLS = {
