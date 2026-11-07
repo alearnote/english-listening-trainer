@@ -570,7 +570,7 @@ function syncFallingModeUI(){
 
   if(falling){
     // 落下ゲームは英→日 / 日→英の両方に対応。英文穴埋めだけ対象外。
-    if($("vocabMode").value==="blank")$("vocabMode").value="en-ja";
+    if(["blank","audio-ja"].includes($("vocabMode").value))$("vocabMode").value="en-ja";
     $("vocabCount").value=String(FALLING_GAME_COUNT);
     $("newVocabBtn").textContent="＋ 15語を準備";
   }else{
@@ -579,7 +579,7 @@ function syncFallingModeUI(){
 }
 $("vocabAnswerMode").addEventListener("change",syncFallingModeUI);
 $("vocabMode").addEventListener("change",()=>{
-  if($("vocabAnswerMode").value==="falling" && $("vocabMode").value==="blank"){
+  if($("vocabAnswerMode").value==="falling" && ["blank","audio-ja"].includes($("vocabMode").value)){
     $("vocabMode").value="en-ja";
   }
 });
@@ -957,19 +957,22 @@ $("fallingStartBtn").addEventListener("click",startFallingGame);
 
 /* Vocabulary */
 const vocabAudioCache = new Map();
+const isVocabAudioMode=()=>$("vocabMode").value==="audio-ja";
+const vocabApiMode=()=>isVocabAudioMode()?"en-ja":$("vocabMode").value;
+let vocabAudioRequestSerial=0;
 
 function syncVocabPronunciationButton(){
   const btn = $("vocabPronounceBtn");
   if(!btn) return;
   const q = vocabSet?.[vocabIndex];
-  const show = $("vocabMode").value === "en-ja" && q && q.word;
+  const show = ["en-ja","audio-ja"].includes($("vocabMode").value) && q && q.word;
   btn.classList.toggle("hidden", !show);
   btn.disabled = !show;
 }
 
 async function playVocabPronunciation(){
   const q = vocabSet?.[vocabIndex];
-  if(!q || $("vocabMode").value !== "en-ja" || !q.word) return;
+  if(!q || !["en-ja","audio-ja"].includes($("vocabMode").value) || !q.word) return;
 
   const btn = $("vocabPronounceBtn");
   const audio = $("vocabAudio");
@@ -996,6 +999,7 @@ async function playVocabPronunciation(){
       vocabAudioCache.set(text.toLowerCase(), url);
     }
 
+    if(q!==vocabSet[vocabIndex]) return;
     audio.src = url;
     audio.currentTime = 0;
     await audio.play();
@@ -1044,7 +1048,7 @@ async function generateVocab(){
 
     const data=await postJson("/api/vocabulary",{
       ...commonSettings(),
-      mode:$("vocabMode").value,
+      mode:vocabApiMode(),
       count:falling?FALLING_GAME_COUNT:Number($("vocabCount").value),
       recentWords:loadVocabHistory(),
       weakWords:getWeakWordsForReview(100),
@@ -1082,11 +1086,20 @@ function renderVocabQuestion(){
   $("fallingPrep").classList.add("hidden");$("fallingGame").classList.add("hidden");
   syncVocabNextButtonForMode();
   const q=vocabSet[vocabIndex],total=vocabSet.length,answerMode=$("vocabAnswerMode").value;vocabAnswered=false;
-  syncVocabPronunciationButton();$("vocabProgress").textContent=`${vocabIndex+1} / ${total}`;$("vocabRunningScore").textContent=`Score ${vocabCorrect}`;$("vocabBar").style.width=`${vocabIndex/total*100}%`;$("vocabPrompt").textContent=q.prompt;$("vocabContext").textContent="";$("vocabContext").classList.add("hidden");$("vocabFeedback").classList.add("hidden");$("vocabNextBtn").classList.add("hidden");$("vocabInputAnswer").value="";$("vocabInputAnswer").disabled=false;$("vocabInputSubmitBtn").disabled=false;$("vocabGiveUpBtn").disabled=false;
+  const audioMode=isVocabAudioMode();
+  const audioSerial=++vocabAudioRequestSerial;
+  $("vocabAudio").pause();$("vocabAudio").removeAttribute("src");
+  syncVocabPronunciationButton();$("vocabProgress").textContent=`${vocabIndex+1} / ${total}`;$("vocabRunningScore").textContent=`Score ${vocabCorrect}`;$("vocabBar").style.width=`${vocabIndex/total*100}%`;$("vocabPrompt").textContent=audioMode?"🔊 音声を聞いて、日本語の意味を答えてください":q.prompt;$("vocabContext").textContent="";$("vocabContext").classList.add("hidden");$("vocabFeedback").classList.add("hidden");$("vocabNextBtn").classList.add("hidden");$("vocabInputAnswer").value="";$("vocabInputAnswer").disabled=false;$("vocabInputSubmitBtn").disabled=false;$("vocabGiveUpBtn").disabled=false;
   if(answerMode==="choice"){
     $("vocabOptions").classList.remove("hidden");$("vocabInputArea").classList.add("hidden");$("vocabOptions").innerHTML=q.options.map((o,i)=>`<button class="option vocab-choice" data-index="${i}"><span><strong>${String.fromCharCode(65+i)}.</strong> ${escapeHtml(o)}</span></button>`).join("");document.querySelectorAll(".vocab-choice").forEach(b=>b.addEventListener("click",()=>answerVocabChoice(Number(b.dataset.index))));
   }else{
     $("vocabOptions").classList.add("hidden");$("vocabOptions").innerHTML="";$("vocabInputArea").classList.remove("hidden");setTimeout(()=>$("vocabInputAnswer").focus(),50);
+  }
+  if(audioMode){
+    const btn=$("vocabPronounceBtn");
+    btn.textContent="🔊 再生する";
+    // 画面表示後に自動再生を試みる。ブラウザが自動再生を禁止した場合も再生ボタンから聞ける。
+    setTimeout(()=>{if(audioSerial===vocabAudioRequestSerial && !vocabAnswered)playVocabPronunciation();},100);
   }
 }
 
@@ -1100,6 +1113,7 @@ function finishVocabAnswer({good,q,feedbackText="",acceptedAnswer="",actualMeani
     addWeakWord(q.word,q.meaning_ja);
   }
 
+  if(isVocabAudioMode()) $("vocabPrompt").textContent=q.word||"";
   const box=$("vocabFeedback");
   box.className=`feedback-box ${good?"good":"bad"}`;
   box.innerHTML=`<strong>${good?"✓ Correct!":"✕ Incorrect"}</strong><p><b>${escapeHtml(q.word||"")}</b>${q.meaning_ja?` — ${escapeHtml(q.meaning_ja)}`:""}</p>${q.context?`<div class="vocab-example"><strong>例文</strong><p>${escapeHtml(q.context)}</p></div>`:""}${feedbackText?`<p>${escapeHtml(feedbackText)}</p>`:""}${!good&&actualMeaning?`<p><strong>あなたの回答「${escapeHtml(actualMeaning.answer||"")}」の意味:</strong> ${escapeHtml(actualMeaning.meaning||"")}</p>`:""}${acceptedAnswer?`<p><strong>模範回答:</strong> ${escapeHtml(acceptedAnswer)}</p>`:""}${masteredNow?`<p><strong>✓ 苦手卒業:</strong> 3回連続で正解したため、今後この単語は出題しません。</p>`:""}`;
@@ -1128,7 +1142,7 @@ async function answerVocabChoice(selected){
   const selectedAnswer=String(q.options?.[selected]||"").trim();
   try{
     const result=await postJson("/api/vocabulary-check",{
-      mode:$("vocabMode").value,
+      mode:vocabApiMode(),
       prompt:q.prompt,
       context:q.context||"",
       word:q.word,
@@ -1140,7 +1154,7 @@ async function answerVocabChoice(selected){
       good:false,
       q,
       feedbackText:q.explanation_ja||result.feedback_ja||"",
-      acceptedAnswer:$("vocabMode").value==="en-ja"?(q.meaning_ja||""):(q.word||""),
+      acceptedAnswer:vocabApiMode()==="en-ja"?(q.meaning_ja||""):(q.word||""),
       actualMeaning:result.actual_meaning ? {answer:selectedAnswer,meaning:result.actual_meaning} : ""
     });
   }catch(e){
@@ -1149,14 +1163,14 @@ async function answerVocabChoice(selected){
       good:false,
       q,
       feedbackText:q.explanation_ja||"",
-      acceptedAnswer:$("vocabMode").value==="en-ja"?(q.meaning_ja||""):(q.word||"")
+      acceptedAnswer:vocabApiMode()==="en-ja"?(q.meaning_ja||""):(q.word||"")
     });
   }
 }
 
 async function answerVocabInput(){
   if(vocabAnswered)return;const q=vocabSet[vocabIndex],userAnswer=$("vocabInputAnswer").value.trim();if(!userAnswer)return;const btn=$("vocabInputSubmitBtn");
-  try{btn.disabled=true;$("vocabGiveUpBtn").disabled=true;$("vocabInputAnswer").disabled=true;const result=await postJson("/api/vocabulary-check",{mode:$("vocabMode").value,prompt:q.prompt,context:q.context||"",word:q.word,meaning_ja:q.meaning_ja,userAnswer});vocabAnswered=true;finishVocabAnswer({
+  try{btn.disabled=true;$("vocabGiveUpBtn").disabled=true;$("vocabInputAnswer").disabled=true;const result=await postJson("/api/vocabulary-check",{mode:vocabApiMode(),prompt:q.prompt,context:q.context||"",word:q.word,meaning_ja:q.meaning_ja,userAnswer});vocabAnswered=true;finishVocabAnswer({
     good:Boolean(result.correct),
     q,
     feedbackText:result.feedback_ja||q.explanation_ja||"",
@@ -1180,7 +1194,7 @@ function giveUpVocabInput(){
     good:false,
     q,
     feedbackText:q.explanation_ja||"答えを確認して、次回もう一度思い出してみましょう。",
-    acceptedAnswer:$("vocabMode").value==="en-ja"?(q.meaning_ja||""):(q.word||"")
+    acceptedAnswer:vocabApiMode()==="en-ja"?(q.meaning_ja||""):(q.word||"")
   });
 }
 
