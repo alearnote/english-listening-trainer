@@ -2,6 +2,7 @@ const $ = id => document.getElementById(id);
 
 let listening = null;
 let listeningAudioUrl = null;
+let listeningGenerationId = 0;
 let listeningSpeed = 1;
 let listeningMcqRevealed = false;
 let vocabSet = [];
@@ -257,6 +258,7 @@ function clearListeningAudio() {
 }
 
 function resetListeningMode() {
+  listeningGenerationId++;
   listening = null;
   listeningMcqRevealed = false;
   clearListeningAudio();
@@ -283,12 +285,34 @@ function resetListeningMode() {
   $("listeningStatus").textContent = "「新しい問題」を押してください";
 }
 
+async function prepareListeningAudio(sentence, generationId) {
+  const r = await fetch("/api/speech", {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({text:sentence})
+  });
+  if (!r.ok) {
+    let msg="音声生成に失敗しました。";
+    try { msg=(await r.json()).error || msg; } catch {}
+    throw new Error(msg);
+  }
+  const blob = await r.blob();
+  // 古い生成結果が、新しい問題の音声を上書きしないようにする。
+  if (generationId !== listeningGenerationId) return false;
+  clearListeningAudio();
+  listeningAudioUrl = URL.createObjectURL(blob);
+  $("audio").src = listeningAudioUrl;
+  $("audio").load();
+  return true;
+}
+
 $("listeningMode").addEventListener("change", resetListeningMode);
 $("newListeningBtn").addEventListener("click", async () => {
   const btn = $("newListeningBtn");
   try {
     btn.disabled = true;
     resetListeningMode();
+    const generationId = listeningGenerationId;
     $("listeningStatus").classList.remove("error");
     $("listeningStatus").textContent = "AIが問題を作成しています…";
     listening = await postJson("/api/listening", {
@@ -297,8 +321,12 @@ $("newListeningBtn").addEventListener("click", async () => {
       length: $("listeningLength").value,
       recentListening: loadListeningHistory()
     });
+    if (generationId !== listeningGenerationId) return;
     if (!listening?.sentence) throw new Error("Listening問題を生成できませんでした。");
     rememberListening(listening.sentence);
+    $("listeningStatus").textContent = "音声も準備しています…";
+    const ready = await prepareListeningAudio(listening.sentence, generationId);
+    if (!ready) return;
     if ($("listeningMode").value === "dictation") {
       $("dictationPanel").classList.remove("hidden");
       $("dictationAnswer").disabled = false;
@@ -316,8 +344,10 @@ $("newListeningBtn").addEventListener("click", async () => {
     }
     $("playBtn").disabled = false;
   } catch(e) {
-    $("listeningStatus").textContent = e.message;
-    $("listeningStatus").classList.add("error");
+    if (generationId === listeningGenerationId) {
+      $("listeningStatus").textContent = e.message;
+      $("listeningStatus").classList.add("error");
+    }
   } finally { btn.disabled = false; }
 });
 
@@ -327,13 +357,8 @@ async function playListening() {
   try {
     play.disabled = true;
     $("listeningStatus").classList.remove("error");
-    if (!listeningAudioUrl) {
-      $("listeningStatus").textContent = "音声を準備しています…";
-      const r = await fetch("/api/speech", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({text:listening.sentence}) });
-      if (!r.ok) { let msg="音声生成に失敗しました。"; try{msg=(await r.json()).error||msg}catch{}; throw new Error(msg); }
-      listeningAudioUrl = URL.createObjectURL(await r.blob());
-      audio.src = listeningAudioUrl;
-    }
+    if (!listeningAudioUrl) throw new Error("音声がまだ準備できていません。新しい問題を作成してください。");
+    if (audio.src !== listeningAudioUrl) audio.src = listeningAudioUrl;
     audio.playbackRate = listeningSpeed;
     audio.currentTime = 0;
     audio.onended = () => {
