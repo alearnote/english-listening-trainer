@@ -1008,9 +1008,20 @@ async function playVocabPronunciation(){
     alert(e.message || "発音の再生に失敗しました。");
   }finally{
     btn.disabled = false;
-    btn.textContent = "🔊 発音を聞く";
+    btn.textContent = "🔊 発音を聞く（F2）";
   }
 }
+
+// F2: replay the current Vocabulary pronunciation, even when the answer input is focused.
+window.addEventListener("keydown", e => {
+  if(e.key !== "F2" || e.repeat || e.isComposing || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+  const page = currentTabPage();
+  if(!page || page.id !== "tab-vocabulary" || $("vocabAnswerMode").value === "falling") return;
+  const button = $("vocabPronounceBtn");
+  if($("vocabQuiz").classList.contains("hidden") || !isVisibleShortcutTarget(button)) return;
+  e.preventDefault();
+  playVocabPronunciation();
+}, true);
 
 $("vocabPronounceBtn").addEventListener("click", playVocabPronunciation);
 $("vocabMode").addEventListener("change", syncVocabPronunciationButton);
