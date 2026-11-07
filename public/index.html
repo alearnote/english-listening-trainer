@@ -58,7 +58,7 @@
       <section id="tab-vocabulary" class="tab-page hidden">
         <div class="card">
           <div class="settings-grid">
-            <label><span>出題形式</span><select id="vocabMode"><option value="en-ja">英 → 日</option><option value="ja-en">日 → 英</option><option value="blank">英文穴埋め</option></select></label>
+            <label><span>出題形式</span><select id="vocabMode"><option value="en-ja">英 → 日</option><option value="audio-ja">音声 → 日（英単語を聞いて回答）</option><option value="ja-en">日 → 英</option><option value="blank">英文穴埋め</option></select></label>
             <label><span>回答方式</span><select id="vocabAnswerMode"><option value="choice">4択</option><option value="input" selected>入力回答（AI判定）</option><option value="falling">落下ゲーム（英↔日・15語）</option></select></label>
             <label><span>問題数</span><select id="vocabCount"><option value="5">5問</option><option value="10" selected>10問</option><option value="15">15問</option><option value="20">20問</option><option value="30">30問</option></select></label>
             <label><span>苦手対策</span><select id="vocabWeakFocus"><option value="off" selected>OFF</option><option value="on">ON</option></select></label>
@@ -120,7 +120,7 @@
           <div class="bar"><div id="vocabBar"></div></div>
           <div class="vocab-prompt-row">
             <h2 id="vocabPrompt"></h2>
-            <button id="vocabPronounceBtn" type="button" class="hidden" title="発音を再生">🔊 発音を聞く</button>
+            <button id="vocabPronounceBtn" type="button" class="hidden" title="音声を再生">🔊 発音を聞く</button>
           </div>
           <audio id="vocabAudio" preload="none"></audio>
           <p id="vocabContext" class="muted"></p>
@@ -232,6 +232,6 @@
       </section>
     </main>
   </div>
-  <script src="/app.js?v=20261107-listening-preload-v31"></script>
+  <script src="/app.js?v=20261107-vocab-audio-v32"></script>
 </body>
 </html>
