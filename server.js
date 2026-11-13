@@ -4827,6 +4827,7 @@ app.post("/api/vocabulary",requireKey,async(req,res)=>{try{
   }
 
   const count=Math.max(5,Math.min(30,Number(req.body.count)||10));
+  const optionCount=Number(req.body.optionCount)===6?6:4;
   const weakFocus=req.body.weakFocus===true;
 
   // recentWords は「これまで出題した単語」の履歴として扱う。
@@ -4943,7 +4944,7 @@ app.post("/api/vocabulary",requireKey,async(req,res)=>{try{
   const modeRule=mode==="blank"
     ? `MODE blank:
 - prompt: one natural English sentence containing exactly one _____
-- options: exactly four English words/short phrases
+- options: exactly ${optionCount} English words/short phrases
 - correct option must be exactly the target word or phrase
 - word: exactly the target word or phrase or phrase
 - meaning_ja: natural Japanese meaning
@@ -4951,14 +4952,14 @@ app.post("/api/vocabulary",requireKey,async(req,res)=>{try{
     : mode==="ja-en"
     ? `MODE ja-en:
 - prompt: natural Japanese meaning of the target word or phrase
-- options: exactly four English words/short phrases
+- options: exactly ${optionCount} English words/short phrases
 - correct option must be exactly the target word or phrase
 - word: exactly the target word or phrase or phrase
 - meaning_ja: natural Japanese meaning
 - context: one natural English example sentence containing the target word or phrase`
     : `MODE en-ja:
 - prompt: exactly the target English word or phrase/phrase
-- options: exactly four Japanese meanings
+- options: exactly ${optionCount} Japanese meanings
 - correct option is the natural Japanese meaning of the target
 - word: exactly the target word or phrase or phrase
 - meaning_ja: natural Japanese meaning
@@ -4987,11 +4988,11 @@ ${subsetText}
 ${modeRule}
 
 Return ONLY valid JSON:
-{"questions":[{"prompt":"...","context":"...","options":["...","...","...","..."],"answer_index":0,"word":"exact target","meaning_ja":"...","explanation_ja":"short Japanese explanation"}]}
+{"questions":[{"prompt":"...","context":"...","options":[${Array(optionCount).fill('"…"').join(",")}],"answer_index":0,"word":"exact target","meaning_ja":"...","explanation_ja":"short Japanese explanation"}]}
 
 Rules:
 - exactly ${targetSubset.length} questions
-- exactly 4 options each
+- exactly ${optionCount} options each
 - word must exactly match its assigned target
 - no duplicate options
 - CEFR-appropriate explanations
@@ -5016,7 +5017,7 @@ Rules:
     const options=Array.isArray(raw.options)?raw.options.map(x=>String(x||"").trim()):[];
     const answerIndex=answerIndexSafe(raw);
 
-    if(options.length!==4||options.some(x=>!x)||new Set(options.map(x=>x.toLowerCase())).size!==4||answerIndex===null){
+    if(options.length!==optionCount||options.some(x=>!x)||new Set(options.map(x=>x.toLowerCase())).size!==optionCount||answerIndex===null){
       return null;
     }
 
