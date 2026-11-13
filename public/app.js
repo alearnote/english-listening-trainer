@@ -1028,14 +1028,14 @@ $("vocabMode").addEventListener("change", syncVocabPronunciationButton);
 $("vocabCount").addEventListener("change",()=>{if($("vocabAnswerMode").value!=="falling")$("newVocabBtn").textContent=`＋ ${$("vocabCount").value}問作る`;});
 $("newVocabBtn").addEventListener("click",generateVocab);$("vocabAgainBtn").addEventListener("click",generateVocab);
 
-// Randomize the four choices and remap the correct answer index together.
-// This is applied to the regular 4-choice mode, not the falling game.
+// Shuffle all available choices (4 or 6), remapping the correct answer index.
+// The falling game uses its own choice handling.
 function shuffleVocabChoiceAnswers(questions){
   return questions.map(q=>{
     if(!Array.isArray(q.options) || ![4,6].includes(q.options.length)) return q;
     const correct=Number(q.answer_index);
-    if(!Number.isInteger(correct) || correct<0 || correct>=4) return q;
-    const order=[0,1,2,3];
+    if(!Number.isInteger(correct) || correct<0 || correct>=q.options.length) return q;
+    const order=Array.from({length:q.options.length},(_,i)=>i);
     for(let i=order.length-1;i>0;i--){
       const j=Math.floor(Math.random()*(i+1));
       [order[i],order[j]]=[order[j],order[i]];
