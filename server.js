@@ -5015,7 +5015,8 @@ Rules:
     const meaningJa=String(raw.meaning_ja||"").trim();
     const explanationJa=String(raw.explanation_ja||"").trim();
     const options=Array.isArray(raw.options)?raw.options.map(x=>String(x||"").trim()):[];
-    const answerIndex=answerIndexSafe(raw);
+    const parsedAnswerIndex=Number(raw.answer_index);
+    const answerIndex=Number.isInteger(parsedAnswerIndex)&&parsedAnswerIndex>=0&&parsedAnswerIndex<optionCount?parsedAnswerIndex:null;
 
     if(options.length!==optionCount||options.some(x=>!x)||new Set(options.map(x=>x.toLowerCase())).size!==optionCount||answerIndex===null){
       return null;
