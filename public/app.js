@@ -1032,7 +1032,7 @@ $("newVocabBtn").addEventListener("click",generateVocab);$("vocabAgainBtn").addE
 // This is applied to the regular 4-choice mode, not the falling game.
 function shuffleVocabChoiceAnswers(questions){
   return questions.map(q=>{
-    if(!Array.isArray(q.options) || q.options.length!==4) return q;
+    if(!Array.isArray(q.options) || ![4,6].includes(q.options.length)) return q;
     const correct=Number(q.answer_index);
     if(!Number.isInteger(correct) || correct<0 || correct>=4) return q;
     const order=[0,1,2,3];
@@ -1060,6 +1060,7 @@ async function generateVocab(){
     const data=await postJson("/api/vocabulary",{
       ...commonSettings(),
       mode:vocabApiMode(),
+      optionCount:!falling && $("vocabAnswerMode").value==="choice6" ? 6 : 4,
       count:falling?FALLING_GAME_COUNT:Number($("vocabCount").value),
       recentWords:loadVocabHistory(),
       weakWords:getWeakWordsForReview(100),
@@ -1068,7 +1069,7 @@ async function generateVocab(){
     });
 
     vocabSet=data.questions||[];
-    if(!falling && $("vocabAnswerMode").value==="choice") vocabSet=shuffleVocabChoiceAnswers(vocabSet);
+    if(!falling && ["choice","choice6"].includes($("vocabAnswerMode").value)) vocabSet=shuffleVocabChoiceAnswers(vocabSet);
     if(!vocabSet.length)throw new Error("問題を生成できませんでした。");
     rememberVocabWords(vocabSet.map(q=>q.word));
     vocabIndex=0;
@@ -1101,7 +1102,7 @@ function renderVocabQuestion(){
   const audioSerial=++vocabAudioRequestSerial;
   $("vocabAudio").pause();$("vocabAudio").removeAttribute("src");
   syncVocabPronunciationButton();$("vocabProgress").textContent=`${vocabIndex+1} / ${total}`;$("vocabRunningScore").textContent=`Score ${vocabCorrect}`;$("vocabBar").style.width=`${vocabIndex/total*100}%`;$("vocabPrompt").textContent=audioMode?"🔊 音声を聞いて、日本語の意味を答えてください":q.prompt;$("vocabContext").textContent="";$("vocabContext").classList.add("hidden");$("vocabFeedback").classList.add("hidden");$("vocabNextBtn").classList.add("hidden");$("vocabInputAnswer").value="";$("vocabInputAnswer").disabled=false;$("vocabInputSubmitBtn").disabled=false;$("vocabGiveUpBtn").disabled=false;
-  if(answerMode==="choice"){
+  if(answerMode==="choice" || answerMode==="choice6"){
     $("vocabOptions").classList.remove("hidden");$("vocabInputArea").classList.add("hidden");$("vocabOptions").innerHTML=q.options.map((o,i)=>`<button class="option vocab-choice" data-index="${i}"><span><strong>${String.fromCharCode(65+i)}.</strong> ${escapeHtml(o)}</span></button>`).join("");document.querySelectorAll(".vocab-choice").forEach(b=>b.addEventListener("click",()=>answerVocabChoice(Number(b.dataset.index))));
   }else{
     $("vocabOptions").classList.add("hidden");$("vocabOptions").innerHTML="";$("vocabInputArea").classList.remove("hidden");setTimeout(()=>$("vocabInputAnswer").focus(),50);

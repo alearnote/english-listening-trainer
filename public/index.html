@@ -59,14 +59,14 @@
         <div class="card">
           <div class="settings-grid">
             <label><span>出題形式</span><select id="vocabMode"><option value="en-ja">英 → 日</option><option value="audio-ja">音声 → 日（英単語を聞いて回答）</option><option value="ja-en">日 → 英</option><option value="blank">英文穴埋め</option></select></label>
-            <label><span>回答方式</span><select id="vocabAnswerMode"><option value="choice">4択</option><option value="input" selected>入力回答（AI判定）</option><option value="falling">落下ゲーム（英↔日・15語）</option></select></label>
+            <label><span>回答方式</span><select id="vocabAnswerMode"><option value="choice">4択</option><option value="choice6">6択</option><option value="input" selected>入力回答（AI判定）</option><option value="falling">落下ゲーム（英↔日・15語）</option></select></label>
             <label><span>問題数</span><select id="vocabCount"><option value="5">5問</option><option value="10" selected>10問</option><option value="15">15問</option><option value="20">20問</option><option value="30">30問</option></select></label>
             <label><span>苦手対策</span><select id="vocabWeakFocus"><option value="off" selected>OFF</option><option value="on">ON</option></select></label>
           </div>
           <button id="newVocabBtn" class="primary">＋ 10問作る</button>
         </div>
 
-        <div id="vocabStart" class="card empty-state"><div class="empty-icon">🧠</div><h2>Vocabulary</h2><p>4択または入力回答で学習できます。</p></div>
+        <div id="vocabStart" class="card empty-state"><div class="empty-icon">🧠</div><h2>Vocabulary</h2><p>4択・6択または入力回答で学習できます。</p></div>
 
 
         <div id="fallingPrep" class="card hidden">
@@ -232,6 +232,6 @@
       </section>
     </main>
   </div>
-  <script src="/app.js?v=20261107-vocab-f2-v34"></script>
+  <script src="/app.js?v=20261113-vocab-six-choice-v35"></script>
 </body>
 </html>
