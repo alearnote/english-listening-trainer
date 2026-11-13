@@ -1101,7 +1101,7 @@ function renderVocabQuestion(){
   const audioMode=isVocabAudioMode();
   const audioSerial=++vocabAudioRequestSerial;
   $("vocabAudio").pause();$("vocabAudio").removeAttribute("src");
-  syncVocabPronunciationButton();$("vocabProgress").textContent=`${vocabIndex+1} / ${total}`;$("vocabRunningScore").textContent=`Score ${vocabCorrect}`;$("vocabBar").style.width=`${vocabIndex/total*100}%`;$("vocabPrompt").textContent=audioMode?"🔊 音声を聞いて、日本語の意味を答えてください":q.prompt;$("vocabContext").textContent="";$("vocabContext").classList.add("hidden");$("vocabFeedback").classList.add("hidden");$("vocabNextBtn").classList.add("hidden");$("vocabInputAnswer").value="";$("vocabInputAnswer").disabled=false;$("vocabInputSubmitBtn").disabled=false;$("vocabGiveUpBtn").disabled=false;
+  syncVocabPronunciationButton();$("vocabProgress").textContent=`${vocabIndex+1} / ${total}`;$("vocabRunningScore").textContent=`Score ${vocabCorrect}`;$("vocabBar").style.width=`${vocabIndex/total*100}%`;$("vocabPrompt").textContent=audioMode?"🔊 音声を聞いて、日本語の意味を答えてください":q.prompt;$("vocabContext").textContent="";$("vocabContext").classList.add("hidden");$("vocabFeedback").classList.add("hidden");$("vocabNextBtn").classList.add("hidden");$("vocabReviewNeededBtn").classList.add("hidden");$("vocabInputAnswer").value="";$("vocabInputAnswer").disabled=false;$("vocabInputSubmitBtn").disabled=false;$("vocabGiveUpBtn").disabled=false;
   if(answerMode==="choice" || answerMode==="choice6"){
     $("vocabOptions").classList.remove("hidden");$("vocabInputArea").classList.add("hidden");$("vocabOptions").innerHTML=q.options.map((o,i)=>`<button class="option vocab-choice" data-index="${i}"><span><strong>${String.fromCharCode(65+i)}.</strong> ${escapeHtml(o)}</span></button>`).join("");document.querySelectorAll(".vocab-choice").forEach(b=>b.addEventListener("click",()=>answerVocabChoice(Number(b.dataset.index))));
   }else{
@@ -1130,6 +1130,7 @@ function finishVocabAnswer({good,q,feedbackText="",acceptedAnswer="",actualMeani
   box.className=`feedback-box ${good?"good":"bad"}`;
   box.innerHTML=`<strong>${good?"✓ Correct!":"✕ Incorrect"}</strong><p><b>${escapeHtml(q.word||"")}</b>${q.meaning_ja?` — ${escapeHtml(q.meaning_ja)}`:""}</p>${q.context?`<div class="vocab-example"><strong>例文</strong><p>${escapeHtml(q.context)}</p></div>`:""}${feedbackText?`<p>${escapeHtml(feedbackText)}</p>`:""}${!good&&actualMeaning?`<p><strong>あなたの回答「${escapeHtml(actualMeaning.answer||"")}」の意味:</strong> ${escapeHtml(actualMeaning.meaning||"")}</p>`:""}${acceptedAnswer?`<p><strong>模範回答:</strong> ${escapeHtml(acceptedAnswer)}</p>`:""}${masteredNow?`<p><strong>✓ 苦手卒業:</strong> 3回連続で正解したため、今後この単語は出題しません。</p>`:""}`;
   box.classList.remove("hidden");
+  $("vocabReviewNeededBtn").classList.toggle("hidden", !good);
   $("vocabNextBtn").disabled=false;
   $("vocabNextBtn").classList.remove("hidden");
   setTimeout(()=>$("vocabNextBtn").scrollIntoView({behavior:"smooth",block:"end"}),100);
@@ -1209,6 +1210,26 @@ function giveUpVocabInput(){
     acceptedAnswer:vocabApiMode()==="en-ja"?(q.meaning_ja||""):(q.word||"")
   });
 }
+
+// A learner may choose to review a correctly answered word after seeing the explanation.
+// Treat it exactly like a wrong answer for score, review list and mastery history.
+$("vocabReviewNeededBtn").addEventListener("click",()=>{
+  if(!vocabAnswered || $("vocabReviewNeededBtn").classList.contains("hidden"))return;
+  const q=vocabSet[vocabIndex];
+  if(!q)return;
+  vocabCorrect=Math.max(0,vocabCorrect-1);
+  vocabMistakes.push(q);
+  addWeakWord(q.word,q.meaning_ja); // resets correct streak and clears mastered status
+  $("vocabRunningScore").textContent=`Score ${vocabCorrect}`;
+  const box=$("vocabFeedback");
+  box.className="feedback-box bad";
+  const first=box.querySelector("strong");
+  if(first)first.textContent="↻ 要復習として記録しました";
+  box.querySelectorAll("p").forEach(p=>{
+    if(p.textContent.includes("苦手卒業"))p.remove();
+  });
+  $("vocabReviewNeededBtn").classList.add("hidden");
+});
 
 $("vocabGiveUpBtn").addEventListener("click",giveUpVocabInput);
 
